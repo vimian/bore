@@ -1,0 +1,41 @@
+http:
+  services:
+    bore-service:
+      loadBalancer:
+        servers:
+          - url: http://bore-control-plane:8787
+    bore-web-service:
+      loadBalancer:
+        servers:
+          - url: http://bore-web:3000
+
+  routers:
+    bore-control-http:
+      entryPoints:
+        - web
+      rule: "Host(`bore.dk`) && (PathPrefix(`/api/v1`) || PathPrefix(`/ws`) || PathPrefix(`/health`) || PathPrefix(`/auth/cli/start`) || PathPrefix(`/auth/cli/complete`))"
+      priority: 100
+      service: bore-service
+
+    bore-control-https:
+      entryPoints:
+        - websecure
+      rule: "Host(`bore.dk`) && (PathPrefix(`/api/v1`) || PathPrefix(`/ws`) || PathPrefix(`/health`) || PathPrefix(`/auth/cli/start`) || PathPrefix(`/auth/cli/complete`))"
+      priority: 100
+      service: bore-service
+      tls:
+        certResolver: letsencrypt
+
+    bore-web-http:
+      entryPoints:
+        - web
+      rule: Host(`bore.dk`)
+      service: bore-web-service
+
+    bore-web-https:
+      entryPoints:
+        - websecure
+      rule: Host(`bore.dk`)
+      service: bore-web-service
+      tls:
+        certResolver: letsencrypt

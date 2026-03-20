@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.data/
+.next/
+.DS_Store
+*.log
+.env
+.env.production
+.env.local
+.env.*.local
+traefik/dynamic/managed-*.yml
+

@@ -1,0 +1,61 @@
+services:
+  traefik:
+    container_name: bore-traefik
+    image: traefik:v3.6.2
+    restart: unless-stopped
+    command:
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      - --providers.file.directory=/etc/traefik/dynamic
+      - --providers.file.watch=true
+      - --certificatesresolvers.letsencrypt.acme.email=${TRAEFIK_ACME_EMAIL}
+      - --certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge=true
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - control-plane
+    volumes:
+      - ./traefik/dynamic:/etc/traefik/dynamic
+      - bore-traefik-acme:/letsencrypt
+
+  control-plane:
+    container_name: bore-control-plane
+    build:
+      context: .
+      dockerfile: docker/control-plane.Dockerfile
+    restart: unless-stopped
+    user: "0:0"
+    env_file:
+      - .env.production
+    expose:
+      - "8787"
+    volumes:
+      - bore-control-plane-data:/data
+      - ./traefik/dynamic:/runtime/traefik-dynamic
+
+  web:
+    container_name: bore-web
+    build:
+      context: .
+      dockerfile: docker/web.Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      HOSTNAME: 0.0.0.0
+      BORE_DB_PATH: /data/bore.sqlite
+      BORE_PUBLIC_DOMAIN: ${BORE_PUBLIC_DOMAIN}
+      BORE_CONTROL_PLANE_ORIGIN: http://bore-control-plane:8787
+    expose:
+      - "3000"
+    depends_on:
+      - control-plane
+    volumes:
+      - bore-control-plane-data:/data
+
+volumes:
+  bore-control-plane-data:
+  bore-traefik-acme:
