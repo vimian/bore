@@ -21,6 +21,12 @@ Update an installed client later with:
 bore self-update
 ```
 
+Remove the local client, daemon, autostart hooks, and Bore config with:
+
+```bash
+bore uninstall
+```
+
 ## App Names
 
 - Client: `apps/agent`

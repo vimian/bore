@@ -45,35 +45,19 @@ func ensureConfigDir() error {
 	return os.MkdirAll(getConfigDir(), 0o755)
 }
 
-func loadConfig() (AgentConfig, error) {
-	if err := ensureConfigDir(); err != nil {
-		return AgentConfig{}, err
-	}
-
-	path := getConfigPath()
-	raw, err := os.ReadFile(path)
+func loadConfigIfPresent() (*AgentConfig, error) {
+	raw, err := os.ReadFile(getConfigPath())
 	if err != nil {
-		if !errors.Is(err, os.ErrNotExist) {
-			return AgentConfig{}, err
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
 		}
 
-		config := AgentConfig{
-			ServerOrigin:   defaultServerOrigin(),
-			DeviceID:       newUUID(),
-			DeviceName:     getDefaultDeviceName(),
-			DesiredTunnels: []DesiredTunnelConfig{},
-		}
-
-		if err := saveConfig(config); err != nil {
-			return AgentConfig{}, err
-		}
-
-		return config, nil
+		return nil, err
 	}
 
 	var parsed AgentConfig
 	if err := json.Unmarshal(raw, &parsed); err != nil {
-		return AgentConfig{}, err
+		return nil, err
 	}
 
 	if parsed.ServerOrigin == "" || os.Getenv("BORE_SERVER_ORIGIN") != "" {
@@ -92,7 +76,35 @@ func loadConfig() (AgentConfig, error) {
 		parsed.DesiredTunnels = []DesiredTunnelConfig{}
 	}
 
-	return parsed, nil
+	return &parsed, nil
+}
+
+func loadConfig() (AgentConfig, error) {
+	if err := ensureConfigDir(); err != nil {
+		return AgentConfig{}, err
+	}
+
+	parsed, err := loadConfigIfPresent()
+	if err != nil {
+		return AgentConfig{}, err
+	}
+
+	if parsed == nil {
+		config := AgentConfig{
+			ServerOrigin:   defaultServerOrigin(),
+			DeviceID:       newUUID(),
+			DeviceName:     getDefaultDeviceName(),
+			DesiredTunnels: []DesiredTunnelConfig{},
+		}
+
+		if err := saveConfig(config); err != nil {
+			return AgentConfig{}, err
+		}
+
+		return config, nil
+	}
+
+	return *parsed, nil
 }
 
 func saveConfig(config AgentConfig) error {
@@ -113,21 +125,34 @@ func loadRuntime() (RuntimeState, error) {
 		return RuntimeState{}, err
 	}
 
+	state, err := loadRuntimeIfPresent()
+	if err != nil {
+		return RuntimeState{}, err
+	}
+
+	if state == nil {
+		return RuntimeState{}, nil
+	}
+
+	return *state, nil
+}
+
+func loadRuntimeIfPresent() (*RuntimeState, error) {
 	raw, err := os.ReadFile(getRuntimePath())
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return RuntimeState{}, nil
+			return nil, nil
 		}
 
-		return RuntimeState{}, err
+		return nil, err
 	}
 
 	var state RuntimeState
 	if err := json.Unmarshal(raw, &state); err != nil {
-		return RuntimeState{}, err
+		return nil, err
 	}
 
-	return state, nil
+	return &state, nil
 }
 
 func saveRuntime(state RuntimeState) error {

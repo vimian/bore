@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -131,4 +132,62 @@ func ensureAutostart(config AgentConfig) (bool, error) {
 		}
 		return true, nil
 	}
+}
+
+func uninstallAutostart() error {
+	var errs []error
+
+	switch runtime.GOOS {
+	case "windows":
+		if err := runWindowsCommand("schtasks", "/Delete", "/TN", "BoreAgent", "/F"); err != nil && !strings.Contains(strings.ToLower(err.Error()), "cannot find") && !strings.Contains(strings.ToLower(err.Error()), "cannot find the file") {
+			errs = append(errs, err)
+		}
+
+		if err := runWindowsCommand(
+			"reg",
+			"DELETE",
+			`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`,
+			"/V",
+			"BoreAgent",
+			"/F",
+		); err != nil && !strings.Contains(strings.ToLower(err.Error()), "unable to find") && !strings.Contains(strings.ToLower(err.Error()), "was unable to find") {
+			errs = append(errs, err)
+		}
+	case "darwin":
+		home, err := os.UserHomeDir()
+		if err == nil {
+			plistPath := filepath.Join(home, "Library", "LaunchAgents", "dev.bore.agent.plist")
+			if output, unloadErr := exec.Command("launchctl", "unload", "-w", plistPath).CombinedOutput(); unloadErr != nil {
+				message := strings.TrimSpace(string(output))
+				if message != "" && !strings.Contains(strings.ToLower(message), "could not find specified service") && !strings.Contains(strings.ToLower(message), "no such file") {
+					errs = append(errs, fmt.Errorf("%s", message))
+				}
+			}
+			if removeErr := os.Remove(plistPath); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
+				errs = append(errs, removeErr)
+			}
+		}
+	default:
+		home, err := os.UserHomeDir()
+		if err == nil {
+			servicePath := filepath.Join(home, ".config", "systemd", "user", "bore-agent.service")
+			if output, disableErr := exec.Command("systemctl", "--user", "disable", "--now", "bore-agent.service").CombinedOutput(); disableErr != nil {
+				message := strings.TrimSpace(string(output))
+				if message != "" && !strings.Contains(strings.ToLower(message), "not loaded") && !strings.Contains(strings.ToLower(message), "does not exist") && !strings.Contains(strings.ToLower(message), "not found") {
+					errs = append(errs, fmt.Errorf("%s", message))
+				}
+			}
+			if removeErr := os.Remove(servicePath); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
+				errs = append(errs, removeErr)
+			}
+			if output, reloadErr := exec.Command("systemctl", "--user", "daemon-reload").CombinedOutput(); reloadErr != nil {
+				message := strings.TrimSpace(string(output))
+				if message != "" && !strings.Contains(strings.ToLower(message), "failed to connect to bus") {
+					errs = append(errs, fmt.Errorf("%s", message))
+				}
+			}
+		}
+	}
+
+	return errors.Join(errs...)
 }

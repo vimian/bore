@@ -11,13 +11,8 @@ import (
 
 var localHTTPClient = &http.Client{Timeout: 10 * time.Second}
 
-func requestLocalJSON(method, path string, body any, target any) error {
-	runtimeState, err := loadRuntime()
-	if err != nil {
-		return err
-	}
-
-	if runtimeState.ControlPort == 0 {
+func requestRuntimeLocalJSON(controlPort int, method, path string, body any, target any) error {
+	if controlPort == 0 {
 		return fmt.Errorf("bore daemon is not running")
 	}
 
@@ -30,7 +25,7 @@ func requestLocalJSON(method, path string, body any, target any) error {
 		payload = bytes.NewReader(raw)
 	}
 
-	req, err := http.NewRequest(method, fmt.Sprintf("http://127.0.0.1:%d%s", runtimeState.ControlPort, path), payload)
+	req, err := http.NewRequest(method, fmt.Sprintf("http://127.0.0.1:%d%s", controlPort, path), payload)
 	if err != nil {
 		return err
 	}
@@ -58,6 +53,15 @@ func requestLocalJSON(method, path string, body any, target any) error {
 	return json.NewDecoder(res.Body).Decode(target)
 }
 
+func requestLocalJSON(method, path string, body any, target any) error {
+	runtimeState, err := loadRuntime()
+	if err != nil {
+		return err
+	}
+
+	return requestRuntimeLocalJSON(runtimeState.ControlPort, method, path, body, target)
+}
+
 func isDaemonHealthy() bool {
 	return requestLocalJSON(http.MethodGet, "/health", nil, nil) == nil
 }
@@ -70,4 +74,17 @@ func syncDaemon() (SyncResponse, error) {
 
 func stopDaemon() error {
 	return requestLocalJSON(http.MethodPost, "/stop", nil, nil)
+}
+
+func stopDaemonIfRunning() error {
+	runtimeState, err := loadRuntimeIfPresent()
+	if err != nil {
+		return err
+	}
+
+	if runtimeState == nil || runtimeState.ControlPort == 0 {
+		return nil
+	}
+
+	return requestRuntimeLocalJSON(runtimeState.ControlPort, http.MethodPost, "/stop", nil, nil)
 }
