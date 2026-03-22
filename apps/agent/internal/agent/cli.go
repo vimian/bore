@@ -64,8 +64,10 @@ func Run(args []string) error {
 		err = selfUpdate()
 	case "version":
 		fmt.Printf("bore %s (%s, %s)\n", Version, Commit, BuildDate)
+		return nil
 	case "help", "--help", "-h":
 		fmt.Println(usage())
+		return nil
 	default:
 		err = fmt.Errorf("unknown command: %s", command)
 	}
