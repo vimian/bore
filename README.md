@@ -6,6 +6,21 @@
 - `apps/control-plane`: SQLite-backed auth, device/tunnel coordination, the HTTP relay path, and Traefik automation.
 - `apps/web`: a Next.js console for Bore account access, CLI approval, and namespace visibility.
 
+## Install
+
+For the hosted Bore service, install the native CLI with:
+
+```bash
+curl -sL https://bore.dk/install.sh | bash
+```
+
+The installer puts `bore` in `~/.local/bin` by default.
+Update an installed client later with:
+
+```bash
+bore self-update
+```
+
 ## App Names
 
 - Client: `apps/agent`
