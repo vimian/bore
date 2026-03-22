@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowRight, LaptopMinimal, RadioTower } from "lucide-react";
 
@@ -5,6 +6,15 @@ import { completeCliAuth } from "@/app/cli-auth/actions";
 import { AuthPanel } from "@/components/auth-panel";
 import { SignOutButton } from "@/components/sign-out-button";
 import { getCurrentUser } from "@/lib/session";
+
+export const metadata: Metadata = {
+  title: "CLI Authentication",
+  description: "Approve Bore CLI login requests in the browser.",
+  robots: {
+    index: false,
+    follow: false,
+  },
+};
 
 type PageProps = {
   searchParams: Promise<{

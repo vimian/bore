@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowLeft, RadioTower } from "lucide-react";
 import { redirect } from "next/navigation";
@@ -7,6 +8,15 @@ import { SignOutButton } from "@/components/sign-out-button";
 import { getDashboardOverview } from "@/lib/bore-db";
 import { getPublicDomain } from "@/lib/env";
 import { getCurrentUser } from "@/lib/session";
+
+export const metadata: Metadata = {
+  title: "Dashboard",
+  description: "Manage Bore namespaces, tunnels, and account settings.",
+  robots: {
+    index: false,
+    follow: false,
+  },
+};
 
 export default async function DashboardPage() {
   const user = await getCurrentUser();

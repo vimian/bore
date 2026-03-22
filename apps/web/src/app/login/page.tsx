@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import {
   ArrowUpRight,
@@ -12,6 +13,15 @@ import { AuthPanel } from "@/components/auth-panel";
 import { getCurrentUser } from "@/lib/session";
 
 const GITHUB_REPO_URL = "https://github.com/vimian/bore";
+
+export const metadata: Metadata = {
+  title: "Sign In",
+  description: "Sign in to the Bore control plane.",
+  robots: {
+    index: false,
+    follow: false,
+  },
+};
 
 export default async function LoginPage() {
   const user = await getCurrentUser();
