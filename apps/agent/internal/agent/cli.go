@@ -65,7 +65,7 @@ func Run(args []string) error {
 		err = handleDaemon(rest)
 	case "self-update":
 		err = selfUpdate()
-	case "version":
+	case "version", "--version", "-v":
 		fmt.Printf("bore %s (%s, %s)\n", Version, Commit, BuildDate)
 		return nil
 	case "help", "--help", "-h":
