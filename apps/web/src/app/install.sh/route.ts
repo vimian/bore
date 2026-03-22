@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 
 export function GET(request: Request) {
-  const origin = process.env.BORE_INSTALL_BASE_URL || new URL(request.url).origin;
+  const forwardedProto = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
+  const forwardedHost = request.headers.get("x-forwarded-host")?.split(",")[0]?.trim()
+    || request.headers.get("host")?.split(",")[0]?.trim();
+  const origin = process.env.BORE_INSTALL_BASE_URL
+    || (forwardedHost ? `${forwardedProto || "https"}://${forwardedHost}` : new URL(request.url).origin);
   const installDir = "${BORE_INSTALL_DIR:-$HOME/.local/bin}";
 
   const script = `#!/usr/bin/env bash
