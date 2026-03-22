@@ -2,21 +2,11 @@
   "name": "@bore/agent",
   "version": "0.1.0",
   "private": true,
-  "type": "module",
-  "bin": {
-    "bore": "dist/src/cli.js"
-  },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "dev": "tsx src/cli.ts",
-    "start": "node dist/src/cli.js",
-    "test": "node --test --import tsx test/**/*.test.ts",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
-  },
-  "dependencies": {
-    "ws": "^8.18.3"
-  },
-  "devDependencies": {
-    "@types/ws": "^8.18.1"
+    "build": "node scripts/build-local.mjs",
+    "dev": "node scripts/run-local.mjs",
+    "start": "node scripts/run-local.mjs",
+    "test": "go test ./...",
+    "typecheck": "go test ./..."
   }
 }

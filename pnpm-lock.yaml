@@ -18,15 +18,7 @@ importers:
         specifier: ^5.9.3
         version: 5.9.3
 
-  apps/agent:
-    dependencies:
-      ws:
-        specifier: ^8.18.3
-        version: 8.19.0
-    devDependencies:
-      '@types/ws':
-        specifier: ^8.18.1
-        version: 8.18.1
+  apps/agent: {}
 
   apps/control-plane:
     dependencies:

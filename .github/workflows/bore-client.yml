@@ -1,0 +1,56 @@
+name: Bore Client
+
+on:
+  pull_request:
+    branches:
+      - master
+  push:
+    branches:
+      - master
+    paths-ignore:
+      - apps/web/public/downloads/latest/**
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    if: github.event_name != 'push' || !contains(github.event.head_commit.message, '[skip ci]')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: apps/agent/go.mod
+
+      - name: Build Bore client binaries
+        run: node scripts/build-agent-release.mjs
+
+      - name: Upload Bore client artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: bore-client-binaries
+          path: apps/web/public/downloads/latest
+
+      - name: Commit refreshed binaries on master
+        if: github.event_name == 'push'
+        run: |
+          if git diff --quiet -- apps/web/public/downloads/latest; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/web/public/downloads/latest
+          git commit -m "chore: refresh bore client binaries [skip ci]"
+          git push

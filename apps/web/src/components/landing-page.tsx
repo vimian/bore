@@ -361,7 +361,7 @@ export function LandingPage({
             </div>
             <div className="space-y-6 px-4 py-5 font-mono text-xs sm:px-5 sm:py-6 sm:text-sm">
               <div className="rounded-[1.5rem] border border-zinc-800 bg-zinc-950/80 p-4">
-                <p className="text-zinc-500">$ bore tunnel --port 3000</p>
+                <p className="text-zinc-500">$ bore up 3000</p>
                 <p className="mt-3 text-zinc-200">
                   Authenticating with Bore control plane...
                 </p>
