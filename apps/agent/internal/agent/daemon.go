@@ -160,11 +160,19 @@ func (d *daemon) sync() (SyncResponse, error) {
 		runtimeState.Tunnels = result.Tunnels
 	})
 
-	if err := d.ensureRelay(config); err != nil {
-		return SyncResponse{}, err
-	}
+	d.ensureRelayAsync(config)
 
 	return result, nil
+}
+
+func (d *daemon) ensureRelayAsync(config AgentConfig) {
+	go func() {
+		if err := d.ensureRelay(config); err != nil {
+			d.updateRuntime(func(runtimeState *RuntimeState) {
+				runtimeState.LastError = err.Error()
+			})
+		}
+	}()
 }
 
 func (d *daemon) ensureRelay(config AgentConfig) error {

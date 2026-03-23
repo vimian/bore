@@ -1,5 +1,44 @@
 package agent
 
+import (
+	"encoding/json"
+	"fmt"
+)
+
+type stringListMap map[string][]string
+
+func (headers *stringListMap) UnmarshalJSON(data []byte) error {
+	if len(data) == 0 || string(data) == "null" {
+		*headers = nil
+		return nil
+	}
+
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+
+	result := make(map[string][]string, len(raw))
+	for key, value := range raw {
+		var list []string
+		if err := json.Unmarshal(value, &list); err == nil {
+			result[key] = append([]string(nil), list...)
+			continue
+		}
+
+		var single string
+		if err := json.Unmarshal(value, &single); err == nil {
+			result[key] = []string{single}
+			continue
+		}
+
+		return fmt.Errorf("unsupported header value for %s", key)
+	}
+
+	*headers = result
+	return nil
+}
+
 type DesiredTunnelConfig struct {
 	LocalPort            int    `json:"localPort"`
 	PreferredSubdomain   string `json:"preferredSubdomain,omitempty"`
@@ -101,13 +140,13 @@ type DeviceRegistration struct {
 }
 
 type proxyRequestMessage struct {
-	Type      string              `json:"type"`
-	RequestID string              `json:"requestId"`
-	LocalPort int                 `json:"localPort"`
-	Method    string              `json:"method"`
-	Path      string              `json:"path"`
-	Headers   map[string][]string `json:"headers"`
-	Body      string              `json:"body"`
+	Type      string        `json:"type"`
+	RequestID string        `json:"requestId"`
+	LocalPort int           `json:"localPort"`
+	Method    string        `json:"method"`
+	Path      string        `json:"path"`
+	Headers   stringListMap `json:"headers"`
+	Body      string        `json:"body"`
 }
 
 type proxyResponseMessage struct {
@@ -119,12 +158,12 @@ type proxyResponseMessage struct {
 }
 
 type websocketConnectMessage struct {
-	Type         string              `json:"type"`
-	ConnectionID string              `json:"connectionId"`
-	LocalPort    int                 `json:"localPort"`
-	Path         string              `json:"path"`
-	Headers      map[string][]string `json:"headers"`
-	Protocols    []string            `json:"protocols"`
+	Type         string        `json:"type"`
+	ConnectionID string        `json:"connectionId"`
+	LocalPort    int           `json:"localPort"`
+	Path         string        `json:"path"`
+	Headers      stringListMap `json:"headers"`
+	Protocols    []string      `json:"protocols"`
 }
 
 type websocketConnectedMessage struct {

@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-var localHTTPClient = &http.Client{Timeout: 10 * time.Second}
+var localHTTPClient = &http.Client{Timeout: 60 * time.Second}
 
 func requestRuntimeLocalJSON(controlPort int, method, path string, body any, target any) error {
 	if controlPort == 0 {

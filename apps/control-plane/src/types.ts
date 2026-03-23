@@ -135,7 +135,7 @@ export interface RelayRequestMessage {
   localPort: number;
   method: string;
   path: string;
-  headers: Record<string, string | string[]>;
+  headers: Record<string, string[]>;
   body: string;
 }
 
@@ -143,7 +143,7 @@ export interface RelayResponseMessage {
   type: "proxy_response";
   requestId: string;
   status: number;
-  headers: Record<string, string | string[]>;
+  headers: Record<string, string[]>;
   body: string;
 }
 
@@ -152,7 +152,7 @@ export interface WebSocketConnectMessage {
   connectionId: string;
   localPort: number;
   path: string;
-  headers: Record<string, string | string[]>;
+  headers: Record<string, string[]>;
   protocols: string[];
 }
 

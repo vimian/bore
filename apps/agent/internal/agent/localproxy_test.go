@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -12,7 +13,7 @@ import (
 )
 
 func TestBuildLocalProxyHeadersUsesOriginalHost(t *testing.T) {
-	headers := buildLocalProxyHeaders(map[string][]string{
+	headers := buildLocalProxyHeaders(stringListMap{
 		"connection":           {"keep-alive"},
 		"host":                 {"localhost:3000"},
 		"x-bore-original-host": {"console.bo.bore.dk"},
@@ -46,7 +47,7 @@ func TestProxyLocalRequestPreservesOriginalHost(t *testing.T) {
 		LocalPort: mustPort(t, port),
 		Method:    http.MethodGet,
 		Path:      "/health",
-		Headers: map[string][]string{
+		Headers: stringListMap{
 			"x-bore-original-host": {"console.bo.bore.dk"},
 		},
 	}
@@ -61,7 +62,7 @@ func TestProxyLocalRequestPreservesOriginalHost(t *testing.T) {
 }
 
 func TestBuildLocalWebSocketHeadersStripsHandshakeHeaders(t *testing.T) {
-	headers := buildLocalWebSocketHeaders(map[string][]string{
+	headers := buildLocalWebSocketHeaders(stringListMap{
 		"connection":               {"Upgrade"},
 		"host":                     {"localhost:3000"},
 		"origin":                   {"https://console.bo.bore.dk"},
@@ -112,7 +113,7 @@ func TestConnectLocalWebSocketPreservesHostAndProtocol(t *testing.T) {
 		ConnectionID: "ws-1",
 		LocalPort:    mustPort(t, port),
 		Path:         "/_next/webpack-hmr?page=/",
-		Headers: map[string][]string{
+		Headers: stringListMap{
 			"origin":               {"https://console.bo.bore.dk"},
 			"x-bore-original-host": {"console.bo.bore.dk"},
 		},
@@ -125,6 +126,32 @@ func TestConnectLocalWebSocketPreservesHostAndProtocol(t *testing.T) {
 
 	if protocol != "next-dev" {
 		t.Fatalf("expected next-dev protocol, got %q", protocol)
+	}
+}
+
+func TestProxyRequestHeadersAcceptSingleStringJSONValues(t *testing.T) {
+	var message proxyRequestMessage
+	if err := json.Unmarshal([]byte(`{
+		"type":"proxy_request",
+		"requestId":"req-1",
+		"localPort":4280,
+		"method":"GET",
+		"path":"/",
+		"headers":{
+			"accept":"*/*",
+			"x-forwarded-host":["bo.bore.dk"],
+			"x-bore-original-host":"bo.bore.dk"
+		},
+		"body":""
+	}`), &message); err != nil {
+		t.Fatalf("expected mixed header shapes to decode, got %v", err)
+	}
+
+	if got := message.Headers["accept"]; len(got) != 1 || got[0] != "*/*" {
+		t.Fatalf("expected single header to normalize into a one-item slice, got %#v", got)
+	}
+	if got := message.Headers["x-bore-original-host"]; len(got) != 1 || got[0] != "bo.bore.dk" {
+		t.Fatalf("expected original host to normalize into a one-item slice, got %#v", got)
 	}
 }
 

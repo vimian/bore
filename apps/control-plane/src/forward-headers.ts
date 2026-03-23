@@ -47,8 +47,8 @@ export function sanitizeForwardHeaders(
   tunnelSubdomain: string,
   forwardedProto: string,
   clientIp: string | undefined,
-): Record<string, string | string[]> {
-  const forwarded: Record<string, string | string[]> = {};
+): Record<string, string[]> {
+  const forwarded: Record<string, string[]> = {};
 
   for (const [key, value] of Object.entries(headers)) {
     if (!value) {
@@ -59,20 +59,20 @@ export function sanitizeForwardHeaders(
       continue;
     }
 
-    forwarded[key] = value;
+    forwarded[key] = Array.isArray(value) ? value : [value];
   }
 
   const canonicalClientIp = clientIp?.trim();
   if (canonicalClientIp) {
-    forwarded["x-real-ip"] = canonicalClientIp;
-    forwarded["x-forwarded-for"] = canonicalClientIp;
+    forwarded["x-real-ip"] = [canonicalClientIp];
+    forwarded["x-forwarded-for"] = [canonicalClientIp];
   }
 
-  forwarded.forwarded = buildForwardedHeader(publicHost, forwardedProto, canonicalClientIp);
-  forwarded["x-forwarded-host"] = publicHost;
-  forwarded["x-forwarded-proto"] = forwardedProto;
-  forwarded["x-bore-original-host"] = publicHost;
-  forwarded["x-bore-tunnel-root"] = tunnelSubdomain;
+  forwarded.forwarded = [buildForwardedHeader(publicHost, forwardedProto, canonicalClientIp)];
+  forwarded["x-forwarded-host"] = [publicHost];
+  forwarded["x-forwarded-proto"] = [forwardedProto];
+  forwarded["x-bore-original-host"] = [publicHost];
+  forwarded["x-bore-tunnel-root"] = [tunnelSubdomain];
   return forwarded;
 }
 

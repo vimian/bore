@@ -24,17 +24,33 @@ test("replaces public forwarding headers with Bore-controlled values", () => {
     "203.0.113.44",
   );
 
-  assert.equal(forwarded["x-custom-header"], "kept");
-  assert.equal(forwarded["x-real-ip"], "203.0.113.44");
-  assert.equal(forwarded["x-forwarded-for"], "203.0.113.44");
-  assert.equal(forwarded["x-forwarded-host"], "console.bo.bore.dk");
-  assert.equal(forwarded["x-forwarded-proto"], "https");
-  assert.equal(forwarded["x-bore-original-host"], "console.bo.bore.dk");
-  assert.equal(forwarded["x-bore-tunnel-root"], "bo");
-  assert.equal(
-    forwarded.forwarded,
+  assert.deepEqual(forwarded["x-custom-header"], ["kept"]);
+  assert.deepEqual(forwarded["x-real-ip"], ["203.0.113.44"]);
+  assert.deepEqual(forwarded["x-forwarded-for"], ["203.0.113.44"]);
+  assert.deepEqual(forwarded["x-forwarded-host"], ["console.bo.bore.dk"]);
+  assert.deepEqual(forwarded["x-forwarded-proto"], ["https"]);
+  assert.deepEqual(forwarded["x-bore-original-host"], ["console.bo.bore.dk"]);
+  assert.deepEqual(forwarded["x-bore-tunnel-root"], ["bo"]);
+  assert.deepEqual(forwarded.forwarded, [
     'for=203.0.113.44;host="console.bo.bore.dk";proto=https',
+  ]);
+});
+
+test("normalizes request headers into array values for the agent wire format", () => {
+  const forwarded = sanitizeForwardHeaders(
+    {
+      accept: "*/*",
+      "x-multi": ["one", "two"],
+    },
+    "bo.bore.dk",
+    "bo",
+    "https",
+    undefined,
   );
+
+  assert.deepEqual(forwarded.accept, ["*/*"]);
+  assert.deepEqual(forwarded["x-multi"], ["one", "two"]);
+  assert.deepEqual(forwarded["x-forwarded-host"], ["bo.bore.dk"]);
 });
 
 test("builds a standards-style Forwarded header for IPv6 clients", () => {
