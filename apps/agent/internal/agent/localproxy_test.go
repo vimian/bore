@@ -61,6 +61,38 @@ func TestProxyLocalRequestPreservesOriginalHost(t *testing.T) {
 	}
 }
 
+func TestProxyLocalRequestDoesNotFollowRedirects(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/":
+			http.Redirect(w, r, "/final", http.StatusTemporaryRedirect)
+		case "/final":
+			w.WriteHeader(http.StatusOK)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	port := strings.Split(strings.TrimPrefix(server.URL, "http://"), ":")[1]
+	response, err := proxyLocalRequest(proxyRequestMessage{
+		Type:      "proxy_request",
+		RequestID: "req-redirect",
+		LocalPort: mustPort(t, port),
+		Method:    http.MethodGet,
+		Path:      "/",
+	})
+	if err != nil {
+		t.Fatalf("proxyLocalRequest returned error: %v", err)
+	}
+	if response.Status != http.StatusTemporaryRedirect {
+		t.Fatalf("expected 307 response, got %d", response.Status)
+	}
+	if got := response.Headers["Location"]; len(got) != 1 || got[0] != "/final" {
+		t.Fatalf("expected redirect location to be preserved, got %#v", got)
+	}
+}
+
 func TestBuildLocalWebSocketHeadersStripsHandshakeHeaders(t *testing.T) {
 	headers := buildLocalWebSocketHeaders(stringListMap{
 		"connection":               {"Upgrade"},

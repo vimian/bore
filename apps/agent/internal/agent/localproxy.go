@@ -157,7 +157,12 @@ func proxyLocalRequest(message proxyRequestMessage) (proxyResponseMessage, error
 		req.Host = headers.host
 	}
 
-	res, err := (&http.Client{Timeout: 30 * time.Second}).Do(req)
+	res, err := (&http.Client{
+		Timeout: 30 * time.Second,
+		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}).Do(req)
 	if err != nil {
 		return proxyResponseMessage{}, err
 	}
