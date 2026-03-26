@@ -291,24 +291,7 @@ func (d *daemon) readRelayLoop(socket *relaySocket) {
 				continue
 			}
 
-			response, err := proxyLocalRequest(message)
-			if err != nil {
-				errorBody, _ := json.Marshal(map[string]string{
-					"error": err.Error(),
-				})
-				_ = socket.sendJSON(proxyResponseMessage{
-					Type:      "proxy_response",
-					RequestID: message.RequestID,
-					Status:    http.StatusBadGateway,
-					Headers: map[string][]string{
-						"Content-Type": {"application/json; charset=utf-8"},
-					},
-					Body: base64.StdEncoding.EncodeToString(errorBody),
-				})
-				continue
-			}
-
-			_ = socket.sendJSON(response)
+			go handleProxyRequest(socket, message)
 		case "websocket_connect":
 			var message websocketConnectMessage
 			if err := json.Unmarshal(raw, &message); err != nil {
@@ -378,6 +361,27 @@ func (d *daemon) readRelayLoop(socket *relaySocket) {
 			d.removeLocalSocket(message.ConnectionID)
 		}
 	}
+}
+
+func handleProxyRequest(socket *relaySocket, message proxyRequestMessage) {
+	response, err := proxyLocalRequest(message)
+	if err != nil {
+		errorBody, _ := json.Marshal(map[string]string{
+			"error": err.Error(),
+		})
+		_ = socket.sendJSON(proxyResponseMessage{
+			Type:      "proxy_response",
+			RequestID: message.RequestID,
+			Status:    http.StatusBadGateway,
+			Headers: map[string][]string{
+				"Content-Type": {"application/json; charset=utf-8"},
+			},
+			Body: base64.StdEncoding.EncodeToString(errorBody),
+		})
+		return
+	}
+
+	_ = socket.sendJSON(response)
 }
 
 func (d *daemon) readLocalWebSocket(socket *relaySocket, connectionID string, localSocket *localWebSocket) {
