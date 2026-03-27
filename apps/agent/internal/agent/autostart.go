@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"os"
@@ -8,10 +9,35 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"unicode/utf16"
 )
 
-func quoteWindowsArgument(value string) string {
-	return `"` + strings.ReplaceAll(value, `"`, `\"`) + `"`
+func encodePowerShellCommand(script string) string {
+	encoded := utf16.Encode([]rune(script))
+	bytes := make([]byte, 0, len(encoded)*2)
+	for _, value := range encoded {
+		bytes = append(bytes, byte(value), byte(value>>8))
+	}
+	return base64.StdEncoding.EncodeToString(bytes)
+}
+
+func escapePowerShellSingleQuoted(value string) string {
+	return strings.ReplaceAll(value, `'`, `''`)
+}
+
+func windowsAutostartCommand(executable string) string {
+	script := fmt.Sprintf("& '%s' daemon start", escapePowerShellSingleQuoted(executable))
+	return strings.Join([]string{
+		"powershell.exe",
+		"-NoProfile",
+		"-NonInteractive",
+		"-WindowStyle",
+		"Hidden",
+		"-ExecutionPolicy",
+		"Bypass",
+		"-EncodedCommand",
+		encodePowerShellCommand(script),
+	}, " ")
 }
 
 func runWindowsCommand(command string, args ...string) error {
@@ -29,7 +55,7 @@ func runWindowsCommand(command string, args ...string) error {
 }
 
 func ensureAutostart(config AgentConfig) (bool, error) {
-	if config.AutostartInstalled {
+	if config.AutostartInstalled && runtime.GOOS != "windows" {
 		return false, nil
 	}
 
@@ -44,7 +70,7 @@ func ensureAutostart(config AgentConfig) (bool, error) {
 
 	switch runtime.GOOS {
 	case "windows":
-		taskCommand := quoteWindowsArgument(executable) + ` daemon start`
+		taskCommand := windowsAutostartCommand(executable)
 		taskErr := runWindowsCommand("schtasks", "/Create", "/SC", "ONLOGON", "/TN", "BoreAgent", "/TR", taskCommand, "/F")
 		if taskErr == nil {
 			return true, nil

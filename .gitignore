@@ -9,4 +9,5 @@ dist/
 .env.local
 .env.*.local
 traefik/dynamic/managed-*.yml
+apps/agent/bore.exe
 
