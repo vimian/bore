@@ -11,7 +11,13 @@ export function shouldHandleControlPlaneHttpRoute(
   pathname: string,
   publicDomain: string,
 ): boolean {
-  if (normalizeRequestHost(hostHeader) !== publicDomain) {
+  const normalizedHost = normalizeRequestHost(hostHeader);
+
+  if (pathname === "/health" && (normalizedHost === "127.0.0.1" || normalizedHost === "localhost")) {
+    return true;
+  }
+
+  if (normalizedHost !== publicDomain) {
     return false;
   }
 
