@@ -9,6 +9,8 @@
 
 ## Git Hygiene
 
+- Require a linear history when merging into `master`. Do not create merge commits for changes landing on `master`.
+- Before merging into `master`, update the branch so it is up to date with the current `master` tip and resolve any divergence first.
 - After a branch has been merged into `master`, delete that merged branch locally and on `origin` if the remote branch still exists.
 - Never delete `master` or the currently checked out branch as part of merged-branch cleanup.
 
