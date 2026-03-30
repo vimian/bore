@@ -7,6 +7,18 @@
 - Use the root scripts through `pnpm`, for example `pnpm install`, `pnpm dev:server`, `pnpm dev:agent`, `pnpm typecheck`, and `pnpm test`.
 - Keep `pnpm-lock.yaml` as the source of truth and do not add or update `package-lock.json`.
 
+## Git Hygiene
+
+- After a branch has been merged into `master`, delete that merged branch locally and on `origin` if the remote branch still exists.
+- Never delete `master` or the currently checked out branch as part of merged-branch cleanup.
+
+## Production Deploy
+
+- Treat a merge into local `master` as incomplete until production has been updated as well.
+- After merging to `master`, push `master` to `origin/master` before assuming the change is live.
+- Bore production runs on the dedicated VPS at `91.99.163.174` with the repo checked out at `/srv/bore/repo`.
+- Update production from `/srv/bore/repo` using `compose.control-plane.yml` and `.env.production`, then verify the live site or health check reflects the change.
+
 ## Additional Context
 
 - Tunnel namespace ownership and reuse rules are documented in `docs/tunnel-namespace-behavior.md`. Read it when working on reservation, routing, or CLI reuse behavior.
