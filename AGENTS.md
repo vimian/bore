@@ -10,3 +10,5 @@
 ## Additional Context
 
 - Tunnel namespace ownership and reuse rules are documented in `docs/tunnel-namespace-behavior.md`. Read it when working on reservation, routing, or CLI reuse behavior.
+- Production deployment rule: the dedicated Bore production server must always run the `master` branch. Do not deploy feature branches or local-only commits to production.
+- Before any production update for Bore, the required changes must be committed, pushed, and merged into `master`. Use the normal branch/PR flow first, then deploy production from `master`.
