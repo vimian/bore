@@ -8,6 +8,12 @@ import { WebSocketServer, type RawData, type WebSocket } from "ws";
 
 import { getUserBySessionToken } from "./bore-db.js";
 import { loadConfig } from "./config.js";
+import {
+  isKnownPublicHost,
+  normalizeRequestHost,
+  shouldHandleControlPlaneHttpRoute,
+  shouldHandleControlPlaneWebSocketRoute,
+} from "./control-plane-routing.js";
 import { getClientIp, getForwardedProto, sanitizeForwardHeaders } from "./forward-headers.js";
 import { diffAddedHostnames, listDevicePublicHostnames } from "./prewarm-hosts.js";
 import { SessionTokenService } from "./session-tokens.js";
@@ -305,284 +311,285 @@ export async function startServer(): Promise<void> {
   const requestHandler = async (request: IncomingMessage, response: ServerResponse) => {
     const method = request.method ?? "GET";
     const url = new URL(request.url ?? "/", config.serverOrigin);
+    const host = normalizeRequestHost(request.headers.host);
 
-    if (method === "GET" && url.pathname === "/health") {
-      respondJson(response, 200, { ok: true });
-      return;
+    if (shouldHandleControlPlaneHttpRoute(request.headers.host, url.pathname, config.publicDomain)) {
+      if (method === "GET" && url.pathname === "/health") {
+        respondJson(response, 200, { ok: true });
+        return;
+      }
+
+      if (method === "GET" && url.pathname === "/auth/cli/start") {
+        const callback = url.searchParams.get("callback");
+        const clientState = url.searchParams.get("state") ?? "";
+        const deviceName = url.searchParams.get("device_name") ?? "Bore device";
+
+        if (!callback) {
+          respondJson(response, 400, { error: "Missing callback URL" });
+          return;
+        }
+
+        const callbackUrl = new URL(callback);
+        const isLoopback =
+          callbackUrl.protocol === "http:" &&
+          ["127.0.0.1", "localhost"].includes(callbackUrl.hostname);
+
+        if (!isLoopback) {
+          respondJson(response, 400, {
+            error: "Callback URL must be a loopback HTTP URL",
+          });
+          return;
+        }
+
+        const pending = await store.createPendingCliAuth({
+          callbackUrl: callback,
+          clientState,
+          deviceName,
+        });
+
+        const approvalUrl = new URL("/cli-auth", config.webOrigin);
+        approvalUrl.searchParams.set("request", pending.id);
+        redirect(response, approvalUrl.toString());
+
+        return;
+      }
+
+      if (method === "POST" && url.pathname === "/auth/cli/complete") {
+        const requestId = url.searchParams.get("requestId");
+        const browserToken = parseBearerToken(request);
+
+        if (!requestId) {
+          respondJson(response, 400, { error: "Missing request ID" });
+          return;
+        }
+
+        if (!browserToken) {
+          respondJson(response, 401, { error: "Missing browser auth token" });
+          return;
+        }
+
+        const pending = store.snapshot().pendingCliAuth[requestId];
+
+        if (!pending || new Date(pending.expiresAt).getTime() < Date.now()) {
+          respondJson(response, 400, { error: "Login session expired" });
+          return;
+        }
+
+        const user = await resolveBrowserUser(browserToken);
+
+        if (!user) {
+          respondJson(response, 401, { error: "Browser session is not authorized" });
+          return;
+        }
+
+        const consumed = await store.consumePendingCliAuth(requestId);
+
+        if (!consumed || new Date(consumed.expiresAt).getTime() < Date.now()) {
+          respondJson(response, 400, { error: "Login session expired" });
+          return;
+        }
+
+        const callbackUrl = new URL(consumed.callbackUrl);
+        callbackUrl.searchParams.set(
+          "token",
+          tokens.sign({ userId: user.id, email: user.email }),
+        );
+        callbackUrl.searchParams.set("state", consumed.clientState);
+        callbackUrl.searchParams.set("email", user.email);
+        respondJson(response, 200, { redirectTo: callbackUrl.toString() });
+        return;
+      }
+
+      if (url.pathname.startsWith("/api/")) {
+        const user = resolveUser(request);
+
+        if (!user) {
+          respondJson(response, 401, { error: "Unauthorized" });
+          return;
+        }
+
+        if (method === "GET" && url.pathname === "/api/v1/me") {
+          respondJson(response, 200, {
+            id: user.id,
+            email: user.email,
+            name: user.name,
+            reservationLimit: user.reservationLimit,
+            accessHostLimit: user.accessHostLimit,
+          });
+          return;
+        }
+
+        if (method === "POST" && url.pathname === "/api/v1/devices/register") {
+          const body = await readJson<{
+            deviceId: string;
+            name: string;
+            hostname: string;
+            platform: string;
+            fingerprint: string;
+          }>(request);
+          respondJson(response, 200, await coordinator.registerDevice(user.id, body));
+          return;
+        }
+
+        if (method === "POST" && url.pathname === "/api/v1/tunnels/sync") {
+          const body = await readJson<{
+            deviceId: string;
+            desiredTunnels: DesiredTunnelInput[];
+          }>(request);
+          const previousDeviceHostnames = listDevicePublicHostnames(
+            store.snapshot(),
+            body.deviceId,
+            config.publicDomain,
+          );
+          const syncResponse = await coordinator.syncDeviceTunnels(
+            user,
+            body.deviceId,
+            body.desiredTunnels,
+          );
+          await Promise.all(
+            [...new Set(syncResponse.tunnels.map((tunnel) => tunnel.subdomain))].map((subdomain) =>
+              tlsManager?.ensureNamespace(subdomain),
+            ),
+          );
+          const currentSnapshot = store.snapshot();
+          await traefikManager?.reconcile(currentSnapshot);
+          const syncHostnames = diffAddedHostnames(
+            previousDeviceHostnames,
+            listDevicePublicHostnames(currentSnapshot, body.deviceId, config.publicDomain),
+          );
+          await prewarmHostnames(syncHostnames);
+          const namespaces = coordinator.listUserNamespaces(user);
+          respondJson(response, 200, { ...syncResponse, namespaces });
+          return;
+        }
+
+        if (method === "GET" && url.pathname === "/api/v1/tunnels") {
+          respondJson(response, 200, {
+            tunnels: await coordinator.listUserTunnels(user.id),
+          });
+          return;
+        }
+
+        if (method === "GET" && url.pathname === "/api/v1/namespaces") {
+          respondJson(response, 200, {
+            namespaces: coordinator.listUserNamespaces(user),
+          });
+          return;
+        }
+
+        const namespacePath = matchNamespacePath(url.pathname);
+        const accessHostPath = matchNamespaceAccessHostPath(url.pathname);
+        const accessHostPortPath = matchNamespaceAccessHostPortPath(url.pathname);
+        const namespaceTrafficPath = matchNamespaceTrafficPath(url.pathname);
+
+        if (method === "DELETE" && namespacePath) {
+          const released = await coordinator.releaseNamespace(user, namespacePath.subdomain);
+          await traefikManager?.reconcile(store.snapshot());
+          respondJson(response, 200, {
+            releasedSubdomain: released.releasedSubdomain,
+            removedAccessHostnames: released.removedAccessHostnames.map(
+              (hostname) => `${hostname}.${config.publicDomain}`,
+            ),
+          });
+          return;
+        }
+
+        if (method === "DELETE" && namespaceTrafficPath) {
+          const body = await readJson<{ scope: "direct" | "child"; label?: string }>(request);
+          await coordinator.clearTraffic(
+            user,
+            namespaceTrafficPath.subdomain,
+            body.scope === "direct"
+              ? { kind: "direct" }
+              : { kind: "child", label: body.label ?? "" },
+          );
+          const namespace = coordinator.listUserNamespaces(user).find(
+            (item) => item.subdomain === namespaceTrafficPath.subdomain,
+          );
+          respondJson(response, 200, {
+            namespace,
+          });
+          return;
+        }
+
+        if (method === "POST" && accessHostPath) {
+          const body = await readJson<{ label: string }>(request);
+          const accessHost = await coordinator.reserveAccessHostname(
+            user,
+            accessHostPath.subdomain,
+            body.label,
+          );
+          await traefikManager?.reconcile(store.snapshot());
+          await prewarmHostnames([`${accessHost.hostname}.${config.publicDomain}`]);
+          const namespace = coordinator.listUserNamespaces(user).find(
+            (item) => item.subdomain === accessHostPath.subdomain,
+          );
+          respondJson(response, 200, {
+            accessHost: namespace?.accessHosts.find((item) => item.hostname === accessHost.hostname),
+            namespace,
+          });
+          return;
+        }
+
+        if (method === "DELETE" && accessHostPath) {
+          const body = await readJson<{ label: string }>(request);
+          const removed = await coordinator.removeAccessHostname(
+            user,
+            accessHostPath.subdomain,
+            body.label,
+          );
+          await traefikManager?.reconcile(store.snapshot());
+          const namespace = coordinator.listUserNamespaces(user).find(
+            (item) => item.subdomain === accessHostPath.subdomain,
+          );
+          respondJson(response, 200, {
+            removedHostname: `${removed.hostname}.${config.publicDomain}`,
+            namespace,
+          });
+          return;
+        }
+
+        if (method === "POST" && accessHostPortPath) {
+          const body = await readJson<{ label: string; localPort: number }>(request);
+          const accessHost = await coordinator.setAccessHostnamePortOverride(
+            user,
+            accessHostPortPath.subdomain,
+            body.label,
+            body.localPort,
+          );
+          const namespace = coordinator.listUserNamespaces(user).find(
+            (item) => item.subdomain === accessHostPortPath.subdomain,
+          );
+          respondJson(response, 200, {
+            accessHost: namespace?.accessHosts.find((item) => item.hostname === accessHost.hostname),
+            namespace,
+          });
+          return;
+        }
+
+        if (method === "DELETE" && accessHostPortPath) {
+          const body = await readJson<{ label: string }>(request);
+          const accessHost = await coordinator.clearAccessHostnamePortOverride(
+            user,
+            accessHostPortPath.subdomain,
+            body.label,
+          );
+          const namespace = coordinator.listUserNamespaces(user).find(
+            (item) => item.subdomain === accessHostPortPath.subdomain,
+          );
+          respondJson(response, 200, {
+            accessHost: namespace?.accessHosts.find((item) => item.hostname === accessHost.hostname),
+            namespace,
+          });
+          return;
+        }
+
+        respondJson(response, 404, { error: "Not found" });
+        return;
+      }
     }
 
-    if (method === "GET" && url.pathname === "/auth/cli/start") {
-      const callback = url.searchParams.get("callback");
-      const clientState = url.searchParams.get("state") ?? "";
-      const deviceName = url.searchParams.get("device_name") ?? "Bore device";
-
-      if (!callback) {
-        respondJson(response, 400, { error: "Missing callback URL" });
-        return;
-      }
-
-      const callbackUrl = new URL(callback);
-      const isLoopback =
-        callbackUrl.protocol === "http:" &&
-        ["127.0.0.1", "localhost"].includes(callbackUrl.hostname);
-
-      if (!isLoopback) {
-        respondJson(response, 400, {
-          error: "Callback URL must be a loopback HTTP URL",
-        });
-        return;
-      }
-
-      const pending = await store.createPendingCliAuth({
-        callbackUrl: callback,
-        clientState,
-        deviceName,
-      });
-
-      const approvalUrl = new URL("/cli-auth", config.webOrigin);
-      approvalUrl.searchParams.set("request", pending.id);
-      redirect(response, approvalUrl.toString());
-
-      return;
-    }
-
-    if (method === "POST" && url.pathname === "/auth/cli/complete") {
-      const requestId = url.searchParams.get("requestId");
-      const browserToken = parseBearerToken(request);
-
-      if (!requestId) {
-        respondJson(response, 400, { error: "Missing request ID" });
-        return;
-      }
-
-      if (!browserToken) {
-        respondJson(response, 401, { error: "Missing browser auth token" });
-        return;
-      }
-
-      const pending = store.snapshot().pendingCliAuth[requestId];
-
-      if (!pending || new Date(pending.expiresAt).getTime() < Date.now()) {
-        respondJson(response, 400, { error: "Login session expired" });
-        return;
-      }
-
-      const user = await resolveBrowserUser(browserToken);
-
-      if (!user) {
-        respondJson(response, 401, { error: "Browser session is not authorized" });
-        return;
-      }
-
-      const consumed = await store.consumePendingCliAuth(requestId);
-
-      if (!consumed || new Date(consumed.expiresAt).getTime() < Date.now()) {
-        respondJson(response, 400, { error: "Login session expired" });
-        return;
-      }
-
-      const callbackUrl = new URL(consumed.callbackUrl);
-      callbackUrl.searchParams.set(
-        "token",
-        tokens.sign({ userId: user.id, email: user.email }),
-      );
-      callbackUrl.searchParams.set("state", consumed.clientState);
-      callbackUrl.searchParams.set("email", user.email);
-      respondJson(response, 200, { redirectTo: callbackUrl.toString() });
-      return;
-    }
-
-    if (url.pathname.startsWith("/api/")) {
-      const user = resolveUser(request);
-
-      if (!user) {
-        respondJson(response, 401, { error: "Unauthorized" });
-        return;
-      }
-
-      if (method === "GET" && url.pathname === "/api/v1/me") {
-        respondJson(response, 200, {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-          reservationLimit: user.reservationLimit,
-          accessHostLimit: user.accessHostLimit,
-        });
-        return;
-      }
-
-      if (method === "POST" && url.pathname === "/api/v1/devices/register") {
-        const body = await readJson<{
-          deviceId: string;
-          name: string;
-          hostname: string;
-          platform: string;
-          fingerprint: string;
-        }>(request);
-        respondJson(response, 200, await coordinator.registerDevice(user.id, body));
-        return;
-      }
-
-      if (method === "POST" && url.pathname === "/api/v1/tunnels/sync") {
-        const body = await readJson<{
-          deviceId: string;
-          desiredTunnels: DesiredTunnelInput[];
-        }>(request);
-        const previousDeviceHostnames = listDevicePublicHostnames(
-          store.snapshot(),
-          body.deviceId,
-          config.publicDomain,
-        );
-        const syncResponse = await coordinator.syncDeviceTunnels(
-          user,
-          body.deviceId,
-          body.desiredTunnels,
-        );
-        await Promise.all(
-          [...new Set(syncResponse.tunnels.map((tunnel) => tunnel.subdomain))].map((subdomain) =>
-            tlsManager?.ensureNamespace(subdomain),
-          ),
-        );
-        const currentSnapshot = store.snapshot();
-        await traefikManager?.reconcile(currentSnapshot);
-        const syncHostnames = diffAddedHostnames(
-          previousDeviceHostnames,
-          listDevicePublicHostnames(currentSnapshot, body.deviceId, config.publicDomain),
-        );
-        await prewarmHostnames(syncHostnames);
-        const namespaces = coordinator.listUserNamespaces(user);
-        respondJson(response, 200, { ...syncResponse, namespaces });
-        return;
-      }
-
-      if (method === "GET" && url.pathname === "/api/v1/tunnels") {
-        respondJson(response, 200, {
-          tunnels: await coordinator.listUserTunnels(user.id),
-        });
-        return;
-      }
-
-      if (method === "GET" && url.pathname === "/api/v1/namespaces") {
-        respondJson(response, 200, {
-          namespaces: coordinator.listUserNamespaces(user),
-        });
-        return;
-      }
-
-      const namespacePath = matchNamespacePath(url.pathname);
-      const accessHostPath = matchNamespaceAccessHostPath(url.pathname);
-      const accessHostPortPath = matchNamespaceAccessHostPortPath(url.pathname);
-      const namespaceTrafficPath = matchNamespaceTrafficPath(url.pathname);
-
-      if (method === "DELETE" && namespacePath) {
-        const released = await coordinator.releaseNamespace(user, namespacePath.subdomain);
-        await traefikManager?.reconcile(store.snapshot());
-        respondJson(response, 200, {
-          releasedSubdomain: released.releasedSubdomain,
-          removedAccessHostnames: released.removedAccessHostnames.map(
-            (hostname) => `${hostname}.${config.publicDomain}`,
-          ),
-        });
-        return;
-      }
-
-      if (method === "DELETE" && namespaceTrafficPath) {
-        const body = await readJson<{ scope: "direct" | "child"; label?: string }>(request);
-        await coordinator.clearTraffic(
-          user,
-          namespaceTrafficPath.subdomain,
-          body.scope === "direct"
-            ? { kind: "direct" }
-            : { kind: "child", label: body.label ?? "" },
-        );
-        const namespace = coordinator.listUserNamespaces(user).find(
-          (item) => item.subdomain === namespaceTrafficPath.subdomain,
-        );
-        respondJson(response, 200, {
-          namespace,
-        });
-        return;
-      }
-
-      if (method === "POST" && accessHostPath) {
-        const body = await readJson<{ label: string }>(request);
-        const accessHost = await coordinator.reserveAccessHostname(
-          user,
-          accessHostPath.subdomain,
-          body.label,
-        );
-        await traefikManager?.reconcile(store.snapshot());
-        await prewarmHostnames([`${accessHost.hostname}.${config.publicDomain}`]);
-        const namespace = coordinator.listUserNamespaces(user).find(
-          (item) => item.subdomain === accessHostPath.subdomain,
-        );
-        respondJson(response, 200, {
-          accessHost: namespace?.accessHosts.find((item) => item.hostname === accessHost.hostname),
-          namespace,
-        });
-        return;
-      }
-
-      if (method === "DELETE" && accessHostPath) {
-        const body = await readJson<{ label: string }>(request);
-        const removed = await coordinator.removeAccessHostname(
-          user,
-          accessHostPath.subdomain,
-          body.label,
-        );
-        await traefikManager?.reconcile(store.snapshot());
-        const namespace = coordinator.listUserNamespaces(user).find(
-          (item) => item.subdomain === accessHostPath.subdomain,
-        );
-        respondJson(response, 200, {
-          removedHostname: `${removed.hostname}.${config.publicDomain}`,
-          namespace,
-        });
-        return;
-      }
-
-      if (method === "POST" && accessHostPortPath) {
-        const body = await readJson<{ label: string; localPort: number }>(request);
-        const accessHost = await coordinator.setAccessHostnamePortOverride(
-          user,
-          accessHostPortPath.subdomain,
-          body.label,
-          body.localPort,
-        );
-        const namespace = coordinator.listUserNamespaces(user).find(
-          (item) => item.subdomain === accessHostPortPath.subdomain,
-        );
-        respondJson(response, 200, {
-          accessHost: namespace?.accessHosts.find((item) => item.hostname === accessHost.hostname),
-          namespace,
-        });
-        return;
-      }
-
-      if (method === "DELETE" && accessHostPortPath) {
-        const body = await readJson<{ label: string }>(request);
-        const accessHost = await coordinator.clearAccessHostnamePortOverride(
-          user,
-          accessHostPortPath.subdomain,
-          body.label,
-        );
-        const namespace = coordinator.listUserNamespaces(user).find(
-          (item) => item.subdomain === accessHostPortPath.subdomain,
-        );
-        respondJson(response, 200, {
-          accessHost: namespace?.accessHosts.find((item) => item.hostname === accessHost.hostname),
-          namespace,
-        });
-        return;
-      }
-
-      respondJson(response, 404, { error: "Not found" });
-      return;
-    }
-
-    const host = request.headers.host?.split(":")[0]?.toLowerCase();
-
-    if (!host || (host !== config.publicDomain && !host.endsWith(`.${config.publicDomain}`))) {
+    if (!host || !isKnownPublicHost(host, config.publicDomain)) {
       respondJson(response, 404, { error: "Unknown host" });
       return;
     }
@@ -811,17 +818,16 @@ export async function startServer(): Promise<void> {
 
   server.on("upgrade", async (request, socket, head) => {
     const url = new URL(request.url ?? "/", config.serverOrigin);
+    const host = normalizeRequestHost(request.headers.host);
 
-    if (url.pathname === "/ws") {
+    if (shouldHandleControlPlaneWebSocketRoute(request.headers.host, url.pathname, config.publicDomain)) {
       wss.handleUpgrade(request, socket, head, (websocket) => {
         wss.emit("connection", websocket, request);
       });
       return;
     }
 
-    const host = request.headers.host?.split(":")[0]?.toLowerCase();
-
-    if (!host || (host !== config.publicDomain && !host.endsWith(`.${config.publicDomain}`))) {
+    if (!host || !isKnownPublicHost(host, config.publicDomain)) {
       rejectUpgrade(socket, 404, "Unknown host");
       return;
     }
