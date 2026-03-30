@@ -6,27 +6,30 @@ export function isKnownPublicHost(host: string, publicDomain: string): boolean {
   return host === publicDomain || host.endsWith(`.${publicDomain}`);
 }
 
+function isLoopbackHost(host: string): boolean {
+  return host === "localhost" || host === "127.0.0.1";
+}
 export function shouldHandleControlPlaneHttpRoute(
   hostHeader: string | undefined,
   pathname: string,
   publicDomain: string,
 ): boolean {
-  const normalizedHost = normalizeRequestHost(hostHeader);
+  const host = normalizeRequestHost(hostHeader);
 
-  if (pathname === "/health" && (normalizedHost === "127.0.0.1" || normalizedHost === "localhost")) {
-    return true;
+  if (host === publicDomain) {
+    return (
+      pathname === "/health"
+      || pathname === "/auth/cli/start"
+      || pathname === "/auth/cli/complete"
+      || pathname.startsWith("/api/")
+    );
   }
 
-  if (normalizedHost !== publicDomain) {
-    return false;
+  if (isLoopbackHost(host)) {
+    return pathname === "/health";
   }
 
-  return (
-    pathname === "/health"
-    || pathname === "/auth/cli/start"
-    || pathname === "/auth/cli/complete"
-    || pathname.startsWith("/api/")
-  );
+  return false;
 }
 
 export function shouldHandleControlPlaneWebSocketRoute(
@@ -34,5 +37,9 @@ export function shouldHandleControlPlaneWebSocketRoute(
   pathname: string,
   publicDomain: string,
 ): boolean {
-  return normalizeRequestHost(hostHeader) === publicDomain && pathname === "/ws";
+  if (normalizeRequestHost(hostHeader) !== publicDomain) {
+    return false;
+  }
+
+  return pathname === "/ws";
 }
