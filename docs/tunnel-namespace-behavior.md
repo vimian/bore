@@ -31,3 +31,5 @@ This note captures the intended product behavior for namespace ownership in `bor
 - `bore up <port>` should prompt for reuse vs generating a new namespace when reusable reserved namespaces exist.
 - `bore release <namespace>` should let the user remove a no-longer-needed reserved namespace once it has no claim records.
 - `bore reassign <port>` should let the user switch a running tunnel to a different reserved namespace that is not active elsewhere, or generate a new one.
+- `bore host set-port <namespace> <label> <port>` should let the user keep the namespace root on its main tunnel port while routing that reserved child host to a different local port.
+- `bore host clear-port <namespace> <label>` should remove that child-host-specific override so it falls back to the namespace's main tunnel port.

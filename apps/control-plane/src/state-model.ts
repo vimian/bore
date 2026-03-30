@@ -31,6 +31,7 @@ export interface AccessHostView {
   hostname: string;
   publicUrl: string;
   kind: AccessHostKind;
+  localPortOverride?: number;
   requestStats: RequestStatsView;
   createdAt: string;
   updatedAt: string;
@@ -176,6 +177,7 @@ export function buildDashboardOverview(
             hostname: accessHost.hostname,
             publicUrl: `https://${accessHost.hostname}.${publicDomain}`,
             kind: accessHost.kind ?? "custom",
+            localPortOverride: accessHost.localPortOverride,
             requestStats: buildRequestStatsView(accessHost.requestStats),
             createdAt: accessHost.createdAt,
             updatedAt: accessHost.updatedAt,

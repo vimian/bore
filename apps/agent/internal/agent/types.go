@@ -46,14 +46,15 @@ type DesiredTunnelConfig struct {
 }
 
 type NamespaceAccessHostView struct {
-	AccessHostID string `json:"accessHostId"`
-	Label        string `json:"label"`
-	Hostname     string `json:"hostname"`
-	PublicURL    string `json:"publicUrl"`
-	Kind         string `json:"kind"`
-	CreatedAt    string `json:"createdAt"`
-	UpdatedAt    string `json:"updatedAt"`
-	LastSeenAt   string `json:"lastSeenAt"`
+	AccessHostID      string `json:"accessHostId"`
+	Label             string `json:"label"`
+	Hostname          string `json:"hostname"`
+	PublicURL         string `json:"publicUrl"`
+	Kind              string `json:"kind"`
+	LocalPortOverride int    `json:"localPortOverride,omitempty"`
+	CreatedAt         string `json:"createdAt"`
+	UpdatedAt         string `json:"updatedAt"`
+	LastSeenAt        string `json:"lastSeenAt"`
 }
 
 type NamespaceClaimView struct {

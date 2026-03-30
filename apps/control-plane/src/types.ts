@@ -63,6 +63,7 @@ export interface AccessHostRecord {
   reservationId: string;
   hostname: string;
   kind: AccessHostKind;
+  localPortOverride?: number;
   requestStats?: RequestStatsRecord;
   createdAt: string;
   updatedAt: string;

@@ -199,6 +199,18 @@ function matchNamespaceAccessHostPath(pathname: string): { subdomain: string } |
   };
 }
 
+function matchNamespaceAccessHostPortPath(pathname: string): { subdomain: string } | undefined {
+  const match = pathname.match(/^\/api\/v1\/namespaces\/([^/]+)\/access-host-port$/);
+
+  if (!match?.[1]) {
+    return undefined;
+  }
+
+  return {
+    subdomain: decodeURIComponent(match[1]),
+  };
+}
+
 function matchNamespaceTrafficPath(pathname: string): { subdomain: string } | undefined {
   const match = pathname.match(/^\/api\/v1\/namespaces\/([^/]+)\/traffic$/);
 
@@ -459,6 +471,7 @@ export async function startServer(): Promise<void> {
 
       const namespacePath = matchNamespacePath(url.pathname);
       const accessHostPath = matchNamespaceAccessHostPath(url.pathname);
+      const accessHostPortPath = matchNamespaceAccessHostPortPath(url.pathname);
       const namespaceTrafficPath = matchNamespaceTrafficPath(url.pathname);
 
       if (method === "DELETE" && namespacePath) {
@@ -523,6 +536,41 @@ export async function startServer(): Promise<void> {
         );
         respondJson(response, 200, {
           removedHostname: `${removed.hostname}.${config.publicDomain}`,
+          namespace,
+        });
+        return;
+      }
+
+      if (method === "POST" && accessHostPortPath) {
+        const body = await readJson<{ label: string; localPort: number }>(request);
+        const accessHost = await coordinator.setAccessHostnamePortOverride(
+          user,
+          accessHostPortPath.subdomain,
+          body.label,
+          body.localPort,
+        );
+        const namespace = coordinator.listUserNamespaces(user).find(
+          (item) => item.subdomain === accessHostPortPath.subdomain,
+        );
+        respondJson(response, 200, {
+          accessHost: namespace?.accessHosts.find((item) => item.hostname === accessHost.hostname),
+          namespace,
+        });
+        return;
+      }
+
+      if (method === "DELETE" && accessHostPortPath) {
+        const body = await readJson<{ label: string }>(request);
+        const accessHost = await coordinator.clearAccessHostnamePortOverride(
+          user,
+          accessHostPortPath.subdomain,
+          body.label,
+        );
+        const namespace = coordinator.listUserNamespaces(user).find(
+          (item) => item.subdomain === accessHostPortPath.subdomain,
+        );
+        respondJson(response, 200, {
+          accessHost: namespace?.accessHosts.find((item) => item.hostname === accessHost.hostname),
           namespace,
         });
         return;
