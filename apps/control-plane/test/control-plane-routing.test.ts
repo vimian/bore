@@ -23,6 +23,9 @@ test("recognizes the public domain and tunneled child hosts", () => {
 test("handles reserved HTTP routes only on the control-plane host", () => {
   assert.equal(shouldHandleControlPlaneHttpRoute("bore.dk", "/health", "bore.dk"), true);
   assert.equal(shouldHandleControlPlaneHttpRoute("bore.dk", "/api/v1/me", "bore.dk"), true);
+  assert.equal(shouldHandleControlPlaneHttpRoute("127.0.0.1:8787", "/health", "bore.dk"), true);
+  assert.equal(shouldHandleControlPlaneHttpRoute("localhost:8787", "/health", "bore.dk"), true);
+  assert.equal(shouldHandleControlPlaneHttpRoute("127.0.0.1:8787", "/api/v1/me", "bore.dk"), false);
   assert.equal(shouldHandleControlPlaneHttpRoute("bo.bore.dk", "/health", "bore.dk"), false);
   assert.equal(shouldHandleControlPlaneHttpRoute("bo.bore.dk", "/api/health", "bore.dk"), false);
   assert.equal(shouldHandleControlPlaneHttpRoute("api.bo.bore.dk", "/api/v1/me", "bore.dk"), false);
