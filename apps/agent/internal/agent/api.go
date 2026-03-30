@@ -79,6 +79,29 @@ func (c *apiClient) createAccessHost(subdomain, label string) (NamespaceAccessHo
 	return result.AccessHost, result.Namespace, err
 }
 
+func (c *apiClient) setAccessHostPortOverride(subdomain, label string, localPort int) (NamespaceAccessHostView, *NamespaceView, error) {
+	var result struct {
+		AccessHost NamespaceAccessHostView `json:"accessHost"`
+		Namespace  *NamespaceView          `json:"namespace"`
+	}
+	err := c.requestJSON(http.MethodPost, "/api/v1/namespaces/"+url.PathEscape(subdomain)+"/access-host-port", map[string]any{
+		"label":     label,
+		"localPort": localPort,
+	}, &result)
+	return result.AccessHost, result.Namespace, err
+}
+
+func (c *apiClient) clearAccessHostPortOverride(subdomain, label string) (NamespaceAccessHostView, *NamespaceView, error) {
+	var result struct {
+		AccessHost NamespaceAccessHostView `json:"accessHost"`
+		Namespace  *NamespaceView          `json:"namespace"`
+	}
+	err := c.requestJSON(http.MethodDelete, "/api/v1/namespaces/"+url.PathEscape(subdomain)+"/access-host-port", map[string]string{
+		"label": label,
+	}, &result)
+	return result.AccessHost, result.Namespace, err
+}
+
 func (c *apiClient) removeAccessHost(subdomain, label string) (string, *NamespaceView, error) {
 	var result struct {
 		RemovedHostname string         `json:"removedHostname"`

@@ -21,6 +21,8 @@ func usage() string {
 		"  bore release <namespace>",
 		"  bore reassign <port>",
 		"  bore host add <namespace> <label>",
+		"  bore host set-port <namespace> <label> <port>",
+		"  bore host clear-port <namespace> <label>",
 		"  bore host rm <namespace> <label>",
 		"  bore ps",
 		"  bore ls",
@@ -300,7 +302,11 @@ func handleUp(args []string) error {
 			continue
 		}
 		for _, accessHost := range namespace.AccessHosts {
-			fmt.Printf("%s -> localhost:%d (%s)\n", accessHost.PublicURL, port, accessHost.Kind)
+			targetPort := port
+			if accessHost.LocalPortOverride > 0 {
+				targetPort = accessHost.LocalPortOverride
+			}
+			fmt.Printf("%s -> localhost:%d (%s)\n", accessHost.PublicURL, targetPort, accessHost.Kind)
 		}
 	}
 
@@ -491,8 +497,10 @@ func handleLs() error {
 }
 
 func handleHost(args []string) error {
-	if len(args) != 3 {
-		return fmt.Errorf("usage: bore host add <namespace> <label>\n  bore host rm <namespace> <label>")
+	if len(args) == 0 {
+		return fmt.Errorf(
+			"usage: bore host add <namespace> <label>\n  bore host set-port <namespace> <label> <port>\n  bore host clear-port <namespace> <label>\n  bore host rm <namespace> <label>",
+		)
 	}
 
 	config, err := loadConfig()
@@ -507,6 +515,9 @@ func handleHost(args []string) error {
 	client := newAPIClient(config)
 	switch args[0] {
 	case "add":
+		if len(args) != 3 {
+			return fmt.Errorf("usage: bore host add <namespace> <label>")
+		}
 		accessHost, namespace, err := client.createAccessHost(args[1], args[2])
 		if err != nil {
 			return err
@@ -516,31 +527,62 @@ func handleHost(args []string) error {
 		}
 		fmt.Printf("Reserved %s\n", accessHost.PublicURL)
 		if namespace != nil {
-			fmt.Printf("Namespace %s now has:\n", namespace.Subdomain)
-			for _, item := range namespace.AccessHosts {
-				fmt.Printf("  %s (%s)\n", item.PublicURL, item.Kind)
-			}
+			printNamespaceAccessHosts(*namespace)
+		}
+		return nil
+	case "set-port":
+		if len(args) != 4 {
+			return fmt.Errorf("usage: bore host set-port <namespace> <label> <port>")
+		}
+		localPort, err := parsePort(args[3])
+		if err != nil {
+			return err
+		}
+		accessHost, namespace, err := client.setAccessHostPortOverride(args[1], args[2], localPort)
+		if err != nil {
+			return err
+		}
+		if accessHost.PublicURL == "" {
+			return fmt.Errorf("the server updated the child host route, but did not return its public URL")
+		}
+		fmt.Printf("%s now routes to localhost:%d\n", accessHost.PublicURL, localPort)
+		if namespace != nil {
+			printNamespaceAccessHosts(*namespace)
+		}
+		return nil
+	case "clear-port":
+		if len(args) != 3 {
+			return fmt.Errorf("usage: bore host clear-port <namespace> <label>")
+		}
+		accessHost, namespace, err := client.clearAccessHostPortOverride(args[1], args[2])
+		if err != nil {
+			return err
+		}
+		if accessHost.PublicURL == "" {
+			return fmt.Errorf("the server cleared the child host route, but did not return its public URL")
+		}
+		fmt.Printf("%s now follows the namespace's main port\n", accessHost.PublicURL)
+		if namespace != nil {
+			printNamespaceAccessHosts(*namespace)
 		}
 		return nil
 	case "rm":
+		if len(args) != 3 {
+			return fmt.Errorf("usage: bore host rm <namespace> <label>")
+		}
 		removedHostname, namespace, err := client.removeAccessHost(args[1], args[2])
 		if err != nil {
 			return err
 		}
 		fmt.Printf("Removed %s\n", removedHostname)
 		if namespace != nil {
-			fmt.Printf("Namespace %s now has:\n", namespace.Subdomain)
-			if len(namespace.AccessHosts) == 0 {
-				fmt.Println("  no child hosts")
-			} else {
-				for _, item := range namespace.AccessHosts {
-					fmt.Printf("  %s (%s)\n", item.PublicURL, item.Kind)
-				}
-			}
+			printNamespaceAccessHosts(*namespace)
 		}
 		return nil
 	default:
-		return fmt.Errorf("usage: bore host add <namespace> <label>\n  bore host rm <namespace> <label>")
+		return fmt.Errorf(
+			"usage: bore host add <namespace> <label>\n  bore host set-port <namespace> <label> <port>\n  bore host clear-port <namespace> <label>\n  bore host rm <namespace> <label>",
+		)
 	}
 }
 
@@ -611,12 +653,10 @@ func printNamespaces(namespaces []NamespaceView) {
 		} else {
 			parts := make([]string, 0, len(namespace.AccessHosts))
 			for _, accessHost := range namespace.AccessHosts {
-				parts = append(parts, fmt.Sprintf("%s [%s]", accessHost.Label, accessHost.Kind))
+				parts = append(parts, describeAccessHost(accessHost))
 			}
 			fmt.Printf("  child hosts: %s\n", strings.Join(parts, ", "))
-			for _, accessHost := range namespace.AccessHosts {
-				fmt.Printf("    %s\n", accessHost.PublicURL)
-			}
+			printAccessHostURLs(namespace.AccessHosts)
 		}
 
 		if len(namespace.Claims) == 0 {
@@ -626,6 +666,35 @@ func printNamespaces(namespaces []NamespaceView) {
 				fmt.Printf("  claim: %s localhost:%d on %s (%s)\n", claim.Status, claim.LocalPort, claim.DeviceName, claim.Hostname)
 			}
 		}
+	}
+}
+
+func describeAccessHost(accessHost NamespaceAccessHostView) string {
+	if accessHost.LocalPortOverride > 0 {
+		return fmt.Sprintf("%s [%s -> localhost:%d]", accessHost.Label, accessHost.Kind, accessHost.LocalPortOverride)
+	}
+
+	return fmt.Sprintf("%s [%s]", accessHost.Label, accessHost.Kind)
+}
+
+func printNamespaceAccessHosts(namespace NamespaceView) {
+	fmt.Printf("Namespace %s now has:\n", namespace.Subdomain)
+	if len(namespace.AccessHosts) == 0 {
+		fmt.Println("  no child hosts")
+		return
+	}
+
+	printAccessHostURLs(namespace.AccessHosts)
+}
+
+func printAccessHostURLs(accessHosts []NamespaceAccessHostView) {
+	for _, item := range accessHosts {
+		if item.LocalPortOverride > 0 {
+			fmt.Printf("  %s (%s -> localhost:%d)\n", item.PublicURL, item.Kind, item.LocalPortOverride)
+			continue
+		}
+
+		fmt.Printf("  %s (%s)\n", item.PublicURL, item.Kind)
 	}
 }
 

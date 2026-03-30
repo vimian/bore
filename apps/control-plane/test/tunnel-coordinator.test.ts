@@ -102,6 +102,51 @@ test("routes the reserved base subdomain and registered child hosts", async () =
   assert.equal(deepNested, undefined);
 });
 
+test("routes child hosts with a port override to the active namespace claimant", async () => {
+  const { coordinator, filePath, user } = await setupCoordinator();
+
+  await coordinator.setDeviceConnection("device-one", true);
+  await coordinator.syncDeviceTunnels(user, "device-one", [{ localPort: 3000 }]);
+  const assigned = (await coordinator.listUserTunnels(user.id))[0]?.subdomain;
+
+  assert.ok(assigned);
+  await coordinator.reserveAccessHostname(user, assigned, "api");
+  await coordinator.setAccessHostnamePortOverride(user, assigned, "api", 4000);
+
+  const direct = coordinator.findActiveTunnelByHostname(`${assigned}.example.com`);
+  const childHost = coordinator.findActiveTunnelByHostname(`api.${assigned}.example.com`);
+  const namespace = coordinator.listUserNamespaces(user).find((item) => item.subdomain === assigned);
+  const snapshot = readSnapshot(filePath);
+  const accessHostRecord = Object.values(snapshot.accessHosts).find(
+    (item) => item.hostname === `api.${assigned}`,
+  );
+
+  assert.equal(direct?.localPort, 3000);
+  assert.equal(childHost?.localPort, 4000);
+  assert.equal(childHost?.deviceId, direct?.deviceId);
+  assert.equal(namespace?.accessHosts.find((item) => item.label === "api")?.localPortOverride, 4000);
+  assert.equal(accessHostRecord?.localPortOverride, 4000);
+});
+
+test("clearing a child-host port override falls back to the namespace port", async () => {
+  const { coordinator, user } = await setupCoordinator();
+
+  await coordinator.setDeviceConnection("device-one", true);
+  await coordinator.syncDeviceTunnels(user, "device-one", [{ localPort: 3000 }]);
+  const assigned = (await coordinator.listUserTunnels(user.id))[0]?.subdomain;
+
+  assert.ok(assigned);
+  await coordinator.reserveAccessHostname(user, assigned, "api");
+  await coordinator.setAccessHostnamePortOverride(user, assigned, "api", 4000);
+  await coordinator.clearAccessHostnamePortOverride(user, assigned, "api");
+
+  const childHost = coordinator.findActiveTunnelByHostname(`api.${assigned}.example.com`);
+  const namespace = coordinator.listUserNamespaces(user).find((item) => item.subdomain === assigned);
+
+  assert.equal(childHost?.localPort, 3000);
+  assert.equal(namespace?.accessHosts.find((item) => item.label === "api")?.localPortOverride, undefined);
+});
+
 test("does not create child hosts until the user reserves them", async () => {
   const { coordinator, user } = await setupCoordinator();
 

@@ -35,6 +35,7 @@ interface ResolvedHostnameTarget {
   reservationId: string;
   kind: "direct" | "child";
   accessHostId?: string;
+  localPortOverride?: number;
 }
 
 type ClearTrafficTarget =
@@ -48,6 +49,14 @@ type ClearTrafficTarget =
 
 function buildAccessHostname(label: string, subdomain: string): string {
   return `${label}.${subdomain}`;
+}
+
+function normalizeLocalPort(value: number): number {
+  if (!Number.isInteger(value) || value < 1 || value > 65_535) {
+    throw new Error("Local port must be an integer between 1 and 65535");
+  }
+
+  return value;
 }
 
 export class TunnelCoordinator {
@@ -178,9 +187,22 @@ export class TunnelCoordinator {
       .map((tunnel) => this.toTunnelView(snapshot, tunnel, this.getStatus(snapshot, tunnel)))
       .filter((view): view is TunnelView => view !== undefined);
 
-    return views
+    const activeTunnel = views
       .filter((view) => view.status === "active")
       .sort((left, right) => right.subdomain.length - left.subdomain.length)[0];
+
+    if (!activeTunnel) {
+      return undefined;
+    }
+
+    if (target.kind !== "child" || target.localPortOverride === undefined) {
+      return activeTunnel;
+    }
+
+    return {
+      ...activeTunnel,
+      localPort: target.localPortOverride,
+    };
   }
 
   hasLiveConnection(deviceId: string): boolean {
@@ -365,6 +387,74 @@ export class TunnelCoordinator {
 
       delete state.accessHosts[existing.id];
       return existing;
+    });
+  }
+
+  async setAccessHostnamePortOverride(
+    user: UserRecord,
+    subdomainInput: string,
+    labelInput: string,
+    localPortInput: number,
+  ): Promise<AccessHostRecord> {
+    const subdomain = normalizeReservedSubdomain(subdomainInput);
+    const label = normalizeDnsLabel(labelInput, "Child host label");
+    const localPort = normalizeLocalPort(localPortInput);
+
+    return this.store.update((state) => {
+      const reservation = Object.values(state.reservations).find(
+        (candidate) => candidate.userId === user.id && candidate.subdomain === subdomain,
+      );
+
+      if (!reservation) {
+        throw new Error(`Namespace ${subdomain} is not reserved for this account`);
+      }
+
+      const hostname = buildAccessHostname(label, reservation.subdomain);
+      const accessHost = Object.values(state.accessHosts).find(
+        (candidate) =>
+          candidate.reservationId === reservation.id && candidate.hostname === hostname,
+      );
+
+      if (!accessHost) {
+        throw new Error(`Child host ${hostname} is not reserved for this account`);
+      }
+
+      accessHost.localPortOverride = localPort;
+      accessHost.updatedAt = new Date().toISOString();
+      return accessHost;
+    });
+  }
+
+  async clearAccessHostnamePortOverride(
+    user: UserRecord,
+    subdomainInput: string,
+    labelInput: string,
+  ): Promise<AccessHostRecord> {
+    const subdomain = normalizeReservedSubdomain(subdomainInput);
+    const label = normalizeDnsLabel(labelInput, "Child host label");
+
+    return this.store.update((state) => {
+      const reservation = Object.values(state.reservations).find(
+        (candidate) => candidate.userId === user.id && candidate.subdomain === subdomain,
+      );
+
+      if (!reservation) {
+        throw new Error(`Namespace ${subdomain} is not reserved for this account`);
+      }
+
+      const hostname = buildAccessHostname(label, reservation.subdomain);
+      const accessHost = Object.values(state.accessHosts).find(
+        (candidate) =>
+          candidate.reservationId === reservation.id && candidate.hostname === hostname,
+      );
+
+      if (!accessHost) {
+        throw new Error(`Child host ${hostname} is not reserved for this account`);
+      }
+
+      delete accessHost.localPortOverride;
+      accessHost.updatedAt = new Date().toISOString();
+      return accessHost;
     });
   }
 
@@ -632,6 +722,7 @@ export class TunnelCoordinator {
       reservationId: accessHost.reservationId,
       kind: "child",
       accessHostId: accessHost.id,
+      localPortOverride: accessHost.localPortOverride,
     };
   }
 
