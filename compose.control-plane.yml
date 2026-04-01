@@ -48,7 +48,7 @@ services:
       HOSTNAME: 0.0.0.0
       BORE_DB_PATH: /data/bore.sqlite
       BORE_PUBLIC_DOMAIN: ${BORE_PUBLIC_DOMAIN}
-      BORE_CONTROL_PLANE_ORIGIN: http://bore-control-plane:8787
+      BORE_CONTROL_PLANE_ORIGIN: ${BORE_SERVER_ORIGIN}
     expose:
       - "3000"
     depends_on:

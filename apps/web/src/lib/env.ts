@@ -1,5 +1,41 @@
+function normalizeOrigin(origin: string): string {
+  return origin.trim().replace(/\/+$/, "");
+}
+
+function isInternalHostname(hostname: string): boolean {
+  const normalized = hostname.toLowerCase();
+
+  return (
+    normalized === "localhost" ||
+    normalized === "127.0.0.1" ||
+    !normalized.includes(".")
+  );
+}
+
 export function getControlPlaneOrigin(): string {
-  return process.env.BORE_CONTROL_PLANE_ORIGIN ?? "http://localhost:8787";
+  const configuredOrigin = process.env.BORE_CONTROL_PLANE_ORIGIN?.trim();
+
+  if (configuredOrigin) {
+    const normalizedOrigin = normalizeOrigin(configuredOrigin);
+
+    if (process.env.NODE_ENV === "production") {
+      try {
+        const configuredHostname = new URL(normalizedOrigin).hostname;
+
+        if (isInternalHostname(configuredHostname)) {
+          return getSiteOrigin();
+        }
+      } catch {
+        return normalizedOrigin;
+      }
+    }
+
+    return normalizedOrigin;
+  }
+
+  return process.env.NODE_ENV === "production"
+    ? getSiteOrigin()
+    : "http://localhost:8787";
 }
 
 export function getPublicDomain(): string {
@@ -9,7 +45,7 @@ export function getPublicDomain(): string {
 export function getSiteOrigin(): string {
   const configuredOrigin = process.env.BORE_SITE_ORIGIN?.trim();
   if (configuredOrigin) {
-    return configuredOrigin.replace(/\/+$/, "");
+    return normalizeOrigin(configuredOrigin);
   }
 
   if (process.env.NODE_ENV === "production") {
