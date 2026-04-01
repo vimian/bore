@@ -23,7 +23,7 @@ func clearRemoteDeviceClaims(config AgentConfig) error {
 		DeviceName:     config.DeviceName,
 		DesiredTunnels: []DesiredTunnelConfig{},
 	})
-	_, err := client.syncTunnels()
+	_, err := client.syncTunnels(nil)
 	return err
 }
 

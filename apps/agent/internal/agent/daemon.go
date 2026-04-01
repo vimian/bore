@@ -149,7 +149,8 @@ func (d *daemon) sync() (SyncResponse, error) {
 		return SyncResponse{}, err
 	}
 
-	result, err := client.syncTunnels()
+	reachableTunnels := filterReachableDesiredTunnels(config.DesiredTunnels)
+	result, err := client.syncTunnels(reachableTunnels)
 	if err != nil {
 		return SyncResponse{}, err
 	}
@@ -163,6 +164,30 @@ func (d *daemon) sync() (SyncResponse, error) {
 	d.ensureRelayAsync(config)
 
 	return result, nil
+}
+
+func filterReachableDesiredTunnels(desiredTunnels []DesiredTunnelConfig) []DesiredTunnelConfig {
+	reachable := make([]DesiredTunnelConfig, 0, len(desiredTunnels))
+
+	for _, tunnel := range desiredTunnels {
+		if !isLocalPortReachable(tunnel.LocalPort) {
+			continue
+		}
+
+		reachable = append(reachable, tunnel)
+	}
+
+	return reachable
+}
+
+func isLocalPortReachable(port int) bool {
+	conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), time.Second)
+	if err != nil {
+		return false
+	}
+
+	_ = conn.Close()
+	return true
 }
 
 func (d *daemon) ensureRelayAsync(config AgentConfig) {

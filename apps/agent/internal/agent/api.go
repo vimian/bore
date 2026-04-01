@@ -36,11 +36,11 @@ func (c *apiClient) registerDevice() error {
 	return c.requestJSON(http.MethodPost, "/api/v1/devices/register", body, nil)
 }
 
-func (c *apiClient) syncTunnels() (SyncResponse, error) {
+func (c *apiClient) syncTunnels(desiredTunnels []DesiredTunnelConfig) (SyncResponse, error) {
 	var result SyncResponse
 	body := map[string]any{
 		"deviceId":       c.config.DeviceID,
-		"desiredTunnels": c.config.DesiredTunnels,
+		"desiredTunnels": desiredTunnels,
 	}
 	err := c.requestJSON(http.MethodPost, "/api/v1/tunnels/sync", body, &result)
 	return result, err
