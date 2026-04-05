@@ -5,6 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 import { readSnapshot } from "../src/bore-db.js";
+import { UserFacingError } from "../src/errors.js";
 import { SQLiteStore } from "../src/store.js";
 import { TunnelCoordinator } from "../src/tunnel-coordinator.js";
 
@@ -256,7 +257,16 @@ test("enforces the per-user reservation limit when creating new namespaces", asy
         { localPort: 3000 },
         { localPort: 4000, allocateNewSubdomain: true },
       ]),
-    /namespace limit of 1/,
+    (error: unknown) => {
+      assert.ok(error instanceof UserFacingError);
+      assert.equal(error.code, "namespace_limit_reached");
+      assert.equal(error.status, 409);
+      assert.deepEqual(error.details, {
+        limit: 1,
+        currentCount: 1,
+      });
+      return true;
+    },
   );
 });
 
@@ -349,7 +359,16 @@ test("enforces the per-user child hostname limit for reserved child hosts", asyn
 
   await assert.rejects(
     () => coordinator.reserveAccessHostname(limitedUser, assigned, "docs"),
-    /child hostname limit of 1/,
+    (error: unknown) => {
+      assert.ok(error instanceof UserFacingError);
+      assert.equal(error.code, "access_host_limit_reached");
+      assert.equal(error.status, 409);
+      assert.deepEqual(error.details, {
+        limit: 1,
+        currentCount: 1,
+      });
+      return true;
+    },
   );
 });
 

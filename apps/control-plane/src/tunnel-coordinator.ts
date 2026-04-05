@@ -12,6 +12,7 @@ import {
   DEFAULT_RESERVATION_LIMIT,
   setDeviceConnection as persistDeviceConnection,
 } from "./store.js";
+import { badRequest, conflict } from "./errors.js";
 import type {
   AccessHostRecord,
   DesiredTunnelInput,
@@ -53,7 +54,7 @@ function buildAccessHostname(label: string, subdomain: string): string {
 
 function normalizeLocalPort(value: number): number {
   if (!Number.isInteger(value) || value < 1 || value > 65_535) {
-    throw new Error("Local port must be an integer between 1 and 65535");
+    throw badRequest("local_port_invalid", "Local port must be an integer between 1 and 65535");
   }
 
   return value;
@@ -76,7 +77,7 @@ export class TunnelCoordinator {
       const existing = state.devices[input.deviceId];
 
       if (existing && existing.userId !== userId) {
-        throw new Error("Device belongs to another user");
+        throw conflict("device_belongs_to_another_user", "Device belongs to another user");
       }
 
       state.devices[input.deviceId] = {
@@ -106,7 +107,7 @@ export class TunnelCoordinator {
       const device = state.devices[deviceId];
 
       if (!device || device.userId !== user.id) {
-        throw new Error("Unknown device");
+        throw badRequest("unknown_device", "Unknown device");
       }
 
       const now = new Date().toISOString();
@@ -312,7 +313,11 @@ export class TunnelCoordinator {
       );
 
       if (!reservation) {
-        throw new Error(`Namespace ${subdomain} is not reserved for this account`);
+        throw badRequest(
+          "namespace_not_reserved_for_account",
+          `Namespace ${subdomain} is not reserved for this account`,
+          { subdomain },
+        );
       }
 
       const hostname = buildAccessHostname(label, reservation.subdomain);
@@ -336,8 +341,13 @@ export class TunnelCoordinator {
         ).length;
 
         if (accessHostCount >= accessHostLimit) {
-          throw new Error(
+          throw conflict(
+            "access_host_limit_reached",
             `You have reached your child hostname limit of ${accessHostLimit}. Reuse an existing child hostname or increase your limit.`,
+            {
+              limit: accessHostLimit,
+              currentCount: accessHostCount,
+            },
           );
         }
       }
@@ -372,7 +382,11 @@ export class TunnelCoordinator {
       );
 
       if (!reservation) {
-        throw new Error(`Namespace ${subdomain} is not reserved for this account`);
+        throw badRequest(
+          "namespace_not_reserved_for_account",
+          `Namespace ${subdomain} is not reserved for this account`,
+          { subdomain },
+        );
       }
 
       const hostname = buildAccessHostname(label, reservation.subdomain);
@@ -382,7 +396,11 @@ export class TunnelCoordinator {
       );
 
       if (!existing) {
-        throw new Error(`Child host ${hostname} is not reserved for this account`);
+        throw badRequest(
+          "child_host_not_reserved_for_account",
+          `Child host ${hostname} is not reserved for this account`,
+          { hostname, subdomain },
+        );
       }
 
       delete state.accessHosts[existing.id];
@@ -406,7 +424,11 @@ export class TunnelCoordinator {
       );
 
       if (!reservation) {
-        throw new Error(`Namespace ${subdomain} is not reserved for this account`);
+        throw badRequest(
+          "namespace_not_reserved_for_account",
+          `Namespace ${subdomain} is not reserved for this account`,
+          { subdomain },
+        );
       }
 
       const hostname = buildAccessHostname(label, reservation.subdomain);
@@ -416,7 +438,11 @@ export class TunnelCoordinator {
       );
 
       if (!accessHost) {
-        throw new Error(`Child host ${hostname} is not reserved for this account`);
+        throw badRequest(
+          "child_host_not_reserved_for_account",
+          `Child host ${hostname} is not reserved for this account`,
+          { hostname, subdomain },
+        );
       }
 
       accessHost.localPortOverride = localPort;
@@ -439,7 +465,11 @@ export class TunnelCoordinator {
       );
 
       if (!reservation) {
-        throw new Error(`Namespace ${subdomain} is not reserved for this account`);
+        throw badRequest(
+          "namespace_not_reserved_for_account",
+          `Namespace ${subdomain} is not reserved for this account`,
+          { subdomain },
+        );
       }
 
       const hostname = buildAccessHostname(label, reservation.subdomain);
@@ -449,7 +479,11 @@ export class TunnelCoordinator {
       );
 
       if (!accessHost) {
-        throw new Error(`Child host ${hostname} is not reserved for this account`);
+        throw badRequest(
+          "child_host_not_reserved_for_account",
+          `Child host ${hostname} is not reserved for this account`,
+          { hostname, subdomain },
+        );
       }
 
       delete accessHost.localPortOverride;
@@ -470,7 +504,11 @@ export class TunnelCoordinator {
       );
 
       if (!reservation) {
-        throw new Error(`Namespace ${subdomain} is not reserved for this account`);
+        throw badRequest(
+          "namespace_not_reserved_for_account",
+          `Namespace ${subdomain} is not reserved for this account`,
+          { subdomain },
+        );
       }
 
       const claims = Object.values(state.deviceTunnels).filter(
@@ -479,8 +517,13 @@ export class TunnelCoordinator {
 
       if (claims.length > 0) {
         const suffix = claims.length === 1 ? "" : "s";
-        throw new Error(
+        throw conflict(
+          "namespace_has_active_claims",
           `Namespace ${subdomain} still has ${claims.length} tunnel claim${suffix}. Run bore down for every tunnel using it before releasing the reservation.`,
+          {
+            claimsCount: claims.length,
+            subdomain,
+          },
         );
       }
 
@@ -517,7 +560,11 @@ export class TunnelCoordinator {
       );
 
       if (!reservation) {
-        throw new Error(`Namespace ${subdomain} is not reserved for this account`);
+        throw badRequest(
+          "namespace_not_reserved_for_account",
+          `Namespace ${subdomain} is not reserved for this account`,
+          { subdomain },
+        );
       }
 
       const now = new Date().toISOString();
@@ -536,7 +583,11 @@ export class TunnelCoordinator {
       );
 
       if (!accessHost) {
-        throw new Error(`Child host ${hostname} is not reserved for this account`);
+        throw badRequest(
+          "child_host_not_reserved_for_account",
+          `Child host ${hostname} is not reserved for this account`,
+          { hostname, subdomain },
+        );
       }
 
       delete accessHost.requestStats;
@@ -763,7 +814,14 @@ export class TunnelCoordinator {
       const normalizedPreferred = normalizeReservedSubdomain(desiredTunnel.preferredSubdomain);
 
       if (normalizedPreferred.endsWith(`.${this.publicDomain}`)) {
-        throw new Error(`Subdomain must not include the public suffix ${this.publicDomain}`);
+        throw badRequest(
+          "subdomain_includes_public_suffix",
+          `Subdomain must not include the public suffix ${this.publicDomain}`,
+          {
+            publicDomain: this.publicDomain,
+            subdomain: normalizedPreferred,
+          },
+        );
       }
 
       const owner = Object.values(state.reservations).find(
@@ -771,11 +829,19 @@ export class TunnelCoordinator {
       );
 
       if (!owner) {
-        throw new Error(`Subdomain ${normalizedPreferred} is not reserved for this account`);
+        throw badRequest(
+          "namespace_not_reserved_for_account",
+          `Subdomain ${normalizedPreferred} is not reserved for this account`,
+          { subdomain: normalizedPreferred },
+        );
       }
 
       if (owner.userId !== user.id) {
-        throw new Error(`Subdomain ${normalizedPreferred} is already reserved`);
+        throw conflict(
+          "namespace_already_reserved",
+          `Subdomain ${normalizedPreferred} is already reserved`,
+          { subdomain: normalizedPreferred },
+        );
       }
 
       return owner;
@@ -796,8 +862,13 @@ export class TunnelCoordinator {
     ).length;
 
     if (reservedCount >= reservationLimit) {
-      throw new Error(
+      throw conflict(
+        "namespace_limit_reached",
         `You have reached your namespace limit of ${reservationLimit}. Reuse an existing namespace or increase your limit.`,
+        {
+          limit: reservationLimit,
+          currentCount: reservedCount,
+        },
       );
     }
 

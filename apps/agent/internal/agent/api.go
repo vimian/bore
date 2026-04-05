@@ -3,7 +3,6 @@ package agent
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -152,12 +151,7 @@ func (c *apiClient) requestJSON(method, requestPath string, body any, target any
 
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
 		message, _ := io.ReadAll(res.Body)
-		text := strings.TrimSpace(string(message))
-		if text == "" {
-			text = fmt.Sprintf("%d %s", res.StatusCode, res.Status)
-		}
-
-		return fmt.Errorf("%s", text)
+		return decodeResponseError(res.StatusCode, message)
 	}
 
 	if target == nil {

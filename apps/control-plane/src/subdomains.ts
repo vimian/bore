@@ -1,3 +1,4 @@
+import { badRequest } from "./errors.js";
 import { DANISH_NAMESPACE_NAMES } from "./danish-namespace-names.js";
 
 const labelPattern = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
@@ -6,15 +7,16 @@ export function normalizeDnsLabel(value: string, fieldName = "Label"): string {
   const normalized = value.trim().toLowerCase().replace(/\.+$/, "");
 
   if (!normalized) {
-    throw new Error(`${fieldName} cannot be empty`);
+    throw badRequest("dns_label_empty", `${fieldName} cannot be empty`);
   }
 
   if (normalized.includes(".")) {
-    throw new Error(`${fieldName} must be a single DNS label`);
+    throw badRequest("dns_label_must_be_single_label", `${fieldName} must be a single DNS label`);
   }
 
   if (!labelPattern.test(normalized)) {
-    throw new Error(
+    throw badRequest(
+      "dns_label_invalid",
       `${fieldName} must use lowercase DNS labels with letters, numbers, and hyphens`,
     );
   }
@@ -67,13 +69,14 @@ export function normalizeReservedSubdomain(value: string): string {
   const normalized = value.trim().toLowerCase().replace(/^\*\./, "").replace(/\.+$/, "");
 
   if (!normalized) {
-    throw new Error("Subdomain cannot be empty");
+    throw badRequest("subdomain_empty", "Subdomain cannot be empty");
   }
 
   const labels = normalized.split(".");
 
   if (labels.some((label) => normalizeDnsLabel(label, "Subdomain label") !== label)) {
-    throw new Error(
+    throw badRequest(
+      "subdomain_invalid",
       "Subdomain must use lowercase DNS labels with letters, numbers, and hyphens",
     );
   }

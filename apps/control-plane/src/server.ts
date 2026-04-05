@@ -14,6 +14,7 @@ import {
   shouldHandleControlPlaneHttpRoute,
   shouldHandleControlPlaneWebSocketRoute,
 } from "./control-plane-routing.js";
+import { toErrorResponse } from "./errors.js";
 import { getClientIp, getForwardedProto, sanitizeForwardHeaders } from "./forward-headers.js";
 import { diffAddedHostnames, listDevicePublicHostnames } from "./prewarm-hosts.js";
 import { SessionTokenService } from "./session-tokens.js";
@@ -309,6 +310,7 @@ export async function startServer(): Promise<void> {
   await traefikManager?.reconcile(store.snapshot());
 
   const requestHandler = async (request: IncomingMessage, response: ServerResponse) => {
+    try {
     const method = request.method ?? "GET";
     const url = new URL(request.url ?? "/", config.serverOrigin);
     const host = normalizeRequestHost(request.headers.host);
@@ -661,6 +663,17 @@ export async function startServer(): Promise<void> {
       respondJson(response, 502, {
         error: error instanceof Error ? error.message : "Tunnel request failed",
       });
+    }
+    } catch (error) {
+      const { status, body } = toErrorResponse(error);
+
+      if (status >= 500) {
+        console.error("Unhandled request error", error);
+      }
+
+      if (!response.writableEnded) {
+        respondJson(response, status, body);
+      }
     }
   };
 

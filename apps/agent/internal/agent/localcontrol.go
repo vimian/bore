@@ -42,7 +42,7 @@ func requestRuntimeLocalJSON(controlPort int, method, path string, body any, tar
 
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
 		message, _ := io.ReadAll(res.Body)
-		return fmt.Errorf("%s", bytes.TrimSpace(message))
+		return decodeResponseError(res.StatusCode, bytes.TrimSpace(message))
 	}
 
 	if target == nil {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -81,7 +82,18 @@ func (d *daemon) run() error {
 			d.updateRuntime(func(runtimeState *RuntimeState) {
 				runtimeState.LastError = err.Error()
 			})
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			var responseErr *ResponseError
+			if errors.As(err, &responseErr) {
+				respondJSON(w, responseErr.StatusCode, map[string]any{
+					"error":   responseErr.Message,
+					"code":    responseErr.Code,
+					"details": responseErr.Details,
+				})
+				return
+			}
+			respondJSON(w, http.StatusInternalServerError, map[string]any{
+				"error": err.Error(),
+			})
 			return
 		}
 

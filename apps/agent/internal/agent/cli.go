@@ -78,8 +78,10 @@ func Run(args []string) error {
 	}
 
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		fmt.Println(usage())
+		fmt.Fprintln(os.Stderr, formatCLIError(err))
+		if shouldShowUsage(err) {
+			fmt.Println(usage())
+		}
 	}
 
 	return err
@@ -225,6 +227,7 @@ func handleUp(args []string) error {
 	var preferredSubdomain string
 	var allocateNewSubdomain bool
 	existingIndex := -1
+	reusableSubdomainCount := 0
 	for index, tunnel := range config.DesiredTunnels {
 		if tunnel.LocalPort == port {
 			existingIndex = index
@@ -247,9 +250,11 @@ func handleUp(args []string) error {
 		if err != nil {
 			return err
 		}
+		reusableSubdomainCount = len(current.ReusableSubdomains)
 		allocateNewSubdomain = preferredSubdomain == ""
 	}
 
+	previousDesiredTunnels := append([]DesiredTunnelConfig(nil), config.DesiredTunnels...)
 	nextTunnels := make([]DesiredTunnelConfig, 0, len(config.DesiredTunnels)+1)
 	for _, tunnel := range config.DesiredTunnels {
 		if tunnel.LocalPort != port {
@@ -279,6 +284,13 @@ func handleUp(args []string) error {
 
 	result, err := syncDaemon()
 	if err != nil {
+		config.DesiredTunnels = previousDesiredTunnels
+		if saveErr := saveConfig(config); saveErr != nil {
+			return saveErr
+		}
+		if allocateNewSubdomain {
+			return explainNewNamespaceError(err, reusableSubdomainCount)
+		}
 		return err
 	}
 
@@ -433,6 +445,7 @@ func handleReassign(args []string) error {
 		return err
 	}
 
+	previousDesiredTunnels := append([]DesiredTunnelConfig(nil), config.DesiredTunnels...)
 	config.DesiredTunnels[existingIndex].PreferredSubdomain = selected
 	config.DesiredTunnels[existingIndex].AllocateNewSubdomain = selected == ""
 	if err := saveConfig(config); err != nil {
@@ -441,6 +454,13 @@ func handleReassign(args []string) error {
 
 	result, err := syncDaemon()
 	if err != nil {
+		config.DesiredTunnels = previousDesiredTunnels
+		if saveErr := saveConfig(config); saveErr != nil {
+			return saveErr
+		}
+		if selected == "" {
+			return explainNewNamespaceError(err, len(current.ReusableSubdomains))
+		}
 		return err
 	}
 
