@@ -252,6 +252,18 @@ func handleUp(args []string) error {
 		}
 		reusableSubdomainCount = len(current.ReusableSubdomains)
 		allocateNewSubdomain = preferredSubdomain == ""
+	} else if allocateNewSubdomain && preferredSubdomain == "" {
+		reusableSubdomains, err := listReusableSubdomains(config)
+		if err != nil {
+			return err
+		}
+
+		preferredSubdomain, err = promptNamespaceChoice(reusableSubdomains, "")
+		if err != nil {
+			return err
+		}
+		reusableSubdomainCount = len(reusableSubdomains)
+		allocateNewSubdomain = preferredSubdomain == ""
 	}
 
 	previousDesiredTunnels := append([]DesiredTunnelConfig(nil), config.DesiredTunnels...)
