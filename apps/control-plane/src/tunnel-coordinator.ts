@@ -21,6 +21,7 @@ import type {
   PersistedState,
   RequestStatsRecord,
   SyncResponse,
+  SyncTunnelFailure,
   TunnelReservationRecord,
   TunnelStatus,
   TunnelView,
@@ -103,8 +104,9 @@ export class TunnelCoordinator {
     deviceId: string,
     desiredTunnels: DesiredTunnelInput[],
   ): Promise<SyncResponse> {
-    await this.store.update((state) => {
+    const failedTunnels = await this.store.update((state) => {
       const device = state.devices[deviceId];
+      const failed: SyncTunnelFailure[] = [];
 
       if (!device || device.userId !== user.id) {
         throw badRequest("unknown_device", "Unknown device");
@@ -129,6 +131,29 @@ export class TunnelCoordinator {
             candidate.localPort === desiredTunnel.localPort,
         );
         const reservation = this.upsertReservation(state, user, desiredTunnel, existingTunnel);
+        const activeConflict = this.findActiveConflict(
+          state,
+          reservation.id,
+          existingTunnel?.id,
+        );
+
+        if (activeConflict) {
+          failed.push(
+            this.buildActiveConflictFailure(
+              state,
+              desiredTunnel,
+              reservation,
+              activeConflict,
+            ),
+          );
+
+          if (existingTunnel && existingTunnel.reservationId === reservation.id) {
+            delete state.deviceTunnels[existingTunnel.id];
+          }
+
+          continue;
+        }
+
         const id = existingTunnel?.id ?? randomUUID();
         const changedSubdomain = existingTunnel?.subdomain !== reservation.subdomain;
 
@@ -146,9 +171,14 @@ export class TunnelCoordinator {
         reservation.lastUsedAt = now;
         reservation.updatedAt = now;
       }
+
+      return failed;
     });
 
-    return this.buildSyncResponse(user.id, deviceId);
+    return {
+      ...this.buildSyncResponse(user.id, deviceId),
+      failedTunnels,
+    };
   }
 
   async listUserTunnels(userId: string): Promise<TunnelView[]> {
@@ -621,6 +651,49 @@ export class TunnelCoordinator {
       deviceId,
       tunnels: this.buildTunnelViews(snapshot, userId),
       reusableSubdomains: this.getReusableSubdomains(snapshot, userId, deviceId),
+      failedTunnels: [],
+    };
+  }
+
+  private findActiveConflict(
+    state: PersistedState,
+    reservationId: string,
+    existingTunnelId?: string,
+  ): DeviceTunnelRecord | undefined {
+    const activeClaims = Object.values(state.deviceTunnels)
+      .filter(
+        (candidate) =>
+          candidate.reservationId === reservationId &&
+          this.#connections.has(candidate.deviceId),
+      )
+      .sort(
+        (left, right) =>
+          right.claimedAt.localeCompare(left.claimedAt) ||
+          right.updatedAt.localeCompare(left.updatedAt),
+      );
+
+    const activeClaim = activeClaims[0];
+
+    if (!activeClaim || activeClaim.id === existingTunnelId) {
+      return undefined;
+    }
+
+    return activeClaim;
+  }
+
+  private buildActiveConflictFailure(
+    state: PersistedState,
+    desiredTunnel: DesiredTunnelInput,
+    reservation: TunnelReservationRecord,
+    activeConflict: DeviceTunnelRecord,
+  ): SyncTunnelFailure {
+    const deviceName = state.devices[activeConflict.deviceId]?.name || "another device";
+
+    return {
+      localPort: desiredTunnel.localPort,
+      subdomain: reservation.subdomain,
+      code: "namespace_active_elsewhere",
+      message: `Namespace ${reservation.subdomain} is already active on ${deviceName}. Stop it there with bore down <port> before using it here.`,
     };
   }
 

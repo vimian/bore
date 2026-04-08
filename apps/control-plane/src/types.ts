@@ -124,10 +124,18 @@ export interface TunnelView {
   lastSeenAt: string;
 }
 
+export interface SyncTunnelFailure {
+  localPort: number;
+  subdomain?: string;
+  code: string;
+  message: string;
+}
+
 export interface SyncResponse {
   deviceId: string;
   tunnels: TunnelView[];
   reusableSubdomains: string[];
+  failedTunnels: SyncTunnelFailure[];
 }
 
 export interface RelayRequestMessage {
@@ -197,4 +205,3 @@ export type RelayMessage =
   | WebSocketDataMessage
   | WebSocketCloseMessage
   | ClientHelloMessage;
-

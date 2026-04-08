@@ -40,7 +40,7 @@ async function setupCoordinator() {
   return { coordinator, filePath, store, user };
 }
 
-test("reuses a reserved subdomain on another device and blocks the older claimant", async () => {
+test("rejects reusing a reserved subdomain on another live device", async () => {
   const { coordinator, user } = await setupCoordinator();
 
   await coordinator.setDeviceConnection("device-one", true);
@@ -51,22 +51,27 @@ test("reuses a reserved subdomain on another device and blocks the older claiman
   assert.equal(firstList[0]?.status, "active");
   const reservedNamespace = firstList[0]?.subdomain;
 
-  await coordinator.setDeviceConnection("device-one", false);
   await coordinator.setDeviceConnection("device-two", true);
-  await coordinator.syncDeviceTunnels(user, "device-two", [
+  const secondSync = await coordinator.syncDeviceTunnels(user, "device-two", [
     { localPort: 80, preferredSubdomain: reservedNamespace },
   ]);
 
-  await coordinator.setDeviceConnection("device-one", true);
-  const secondList = await coordinator.listUserTunnels(user.id);
+  assert.deepEqual(secondSync.failedTunnels, [
+    {
+      localPort: 80,
+      subdomain: reservedNamespace,
+      code: "namespace_active_elsewhere",
+      message: `Namespace ${reservedNamespace} is already active on Laptop. Stop it there with bore down <port> before using it here.`,
+    },
+  ]);
 
+  const secondList = await coordinator.listUserTunnels(user.id);
   const laptopTunnel = secondList.find((item) => item.deviceId === "device-one");
   const desktopTunnel = secondList.find((item) => item.deviceId === "device-two");
 
   assert.equal(laptopTunnel?.subdomain, reservedNamespace);
-  assert.equal(desktopTunnel?.subdomain, reservedNamespace);
-  assert.equal(desktopTunnel?.status, "active");
-  assert.equal(laptopTunnel?.status, "blocked");
+  assert.equal(laptopTunnel?.status, "active");
+  assert.equal(desktopTunnel, undefined);
 });
 
 test("persists tunnel state to disk", async () => {
@@ -223,17 +228,47 @@ test("does not offer namespaces that are actively claimed on another live device
 
   assert.ok(firstNamespace);
 
-  await coordinator.syncDeviceTunnels(user, "device-two", [
-    { localPort: 123, preferredSubdomain: firstNamespace },
-  ]);
-
-  const firstDeviceView = await coordinator.syncDeviceTunnels(user, "device-one", [{ localPort: 80 }]);
   const secondDeviceView = await coordinator.syncDeviceTunnels(user, "device-two", [
     { localPort: 123, preferredSubdomain: firstNamespace },
   ]);
+  const firstDeviceView = await coordinator.syncDeviceTunnels(user, "device-one", [{ localPort: 80 }]);
 
+  assert.deepEqual(secondDeviceView.failedTunnels, [
+    {
+      localPort: 123,
+      subdomain: firstNamespace,
+      code: "namespace_active_elsewhere",
+      message: `Namespace ${firstNamespace} is already active on Laptop. Stop it there with bore down <port> before using it here.`,
+    },
+  ]);
   assert.equal(firstDeviceView.reusableSubdomains.includes(firstNamespace), false);
   assert.equal(secondDeviceView.reusableSubdomains.includes(firstNamespace), false);
+});
+
+test("allows unrelated namespaces in the same sync when one namespace is already active elsewhere", async () => {
+  const { coordinator, user } = await setupCoordinator();
+
+  await coordinator.setDeviceConnection("device-one", true);
+  await coordinator.syncDeviceTunnels(user, "device-one", [{ localPort: 80 }]);
+  const activeNamespace = (await coordinator.listUserTunnels(user.id))[0]?.subdomain;
+
+  assert.ok(activeNamespace);
+
+  const secondSync = await coordinator.syncDeviceTunnels(user, "device-two", [
+    { localPort: 123, preferredSubdomain: activeNamespace },
+    { localPort: 456, allocateNewSubdomain: true },
+  ]);
+
+  assert.equal(secondSync.failedTunnels.length, 1);
+  assert.equal(secondSync.failedTunnels[0]?.localPort, 123);
+  assert.equal(secondSync.failedTunnels[0]?.code, "namespace_active_elsewhere");
+  assert.ok(secondSync.tunnels.some((item) => item.deviceId === "device-two" && item.localPort === 456));
+
+  const snapshot = await coordinator.listUserTunnels(user.id);
+  assert.equal(
+    snapshot.filter((item) => item.subdomain === activeNamespace).length,
+    1,
+  );
 });
 
 test("enforces the per-user reservation limit when creating new namespaces", async () => {

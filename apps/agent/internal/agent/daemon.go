@@ -169,7 +169,7 @@ func (d *daemon) sync() (SyncResponse, error) {
 
 	d.updateRuntime(func(runtimeState *RuntimeState) {
 		runtimeState.LastSyncAt = time.Now().UTC().Format(time.RFC3339)
-		runtimeState.LastError = ""
+		runtimeState.LastError = summarizeSyncTunnelFailures(result.FailedTunnels)
 		runtimeState.Tunnels = result.Tunnels
 	})
 

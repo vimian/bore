@@ -305,6 +305,13 @@ func handleUp(args []string) error {
 		}
 		return err
 	}
+	if failure := findSyncTunnelFailure(result, port); failure != nil {
+		config.DesiredTunnels = previousDesiredTunnels
+		if saveErr := saveConfig(config); saveErr != nil {
+			return saveErr
+		}
+		return fmt.Errorf("%s", failure.Message)
+	}
 
 	config = mergeAssignedNamespaces(config, result.Tunnels, config.DeviceID)
 	if err := saveConfig(config); err != nil {
@@ -474,6 +481,13 @@ func handleReassign(args []string) error {
 			return explainNewNamespaceError(err, len(current.ReusableSubdomains))
 		}
 		return err
+	}
+	if failure := findSyncTunnelFailure(result, port); failure != nil {
+		config.DesiredTunnels = previousDesiredTunnels
+		if saveErr := saveConfig(config); saveErr != nil {
+			return saveErr
+		}
+		return fmt.Errorf("%s", failure.Message)
 	}
 
 	config = mergeAssignedNamespaces(config, result.Tunnels, config.DeviceID)

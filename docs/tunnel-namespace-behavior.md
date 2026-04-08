@@ -23,12 +23,13 @@ This note captures the intended product behavior for namespace ownership in `bor
 ## Multi-device behavior
 
 - A user may reuse any of their reserved namespaces on another device when that namespace is not actively claimed by a live device.
-- If device B reuses a namespace while device A is offline, and device A later reconnects with the same namespace, device A should become `blocked` until device B disconnects or releases that namespace.
+- If device B reuses a namespace while device A is offline, and device A later reconnects with the same namespace, device A should fail that tunnel sync until device B disconnects or releases that namespace.
 - Releasing can happen because the active device goes offline or because it runs `bore down <port>` for the tunnel using that namespace.
 
 ## CLI expectations
 
 - `bore up <port>` should prompt for reuse vs generating a new namespace when reusable reserved namespaces exist.
+- If the chosen namespace is already active on another live device, `bore up <port>` should fail for that tunnel instead of creating a second live claim.
 - `bore release <namespace>` should let the user remove a no-longer-needed reserved namespace once it has no claim records.
 - `bore reassign <port>` should let the user switch a running tunnel to a different reserved namespace that is not active elsewhere, or generate a new one.
 - `bore host set-port <namespace> <label> <port>` should let the user keep the namespace root on its main tunnel port while routing that reserved child host to a different local port.

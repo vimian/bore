@@ -125,11 +125,19 @@ type TunnelView struct {
 	LastSeenAt string `json:"lastSeenAt"`
 }
 
+type SyncTunnelFailure struct {
+	LocalPort int    `json:"localPort"`
+	Subdomain string `json:"subdomain,omitempty"`
+	Code      string `json:"code"`
+	Message   string `json:"message"`
+}
+
 type SyncResponse struct {
-	DeviceID           string          `json:"deviceId"`
-	Tunnels            []TunnelView    `json:"tunnels"`
-	ReusableSubdomains []string        `json:"reusableSubdomains"`
-	Namespaces         []NamespaceView `json:"namespaces"`
+	DeviceID           string              `json:"deviceId"`
+	Tunnels            []TunnelView        `json:"tunnels"`
+	ReusableSubdomains []string            `json:"reusableSubdomains"`
+	FailedTunnels      []SyncTunnelFailure `json:"failedTunnels"`
+	Namespaces         []NamespaceView     `json:"namespaces"`
 }
 
 type DeviceRegistration struct {
