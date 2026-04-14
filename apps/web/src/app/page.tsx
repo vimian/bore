@@ -9,7 +9,7 @@ import { getCurrentUser } from "@/lib/session";
 const siteOrigin = getSiteOrigin();
 const pageTitle = "HTTPS For Localhost With Persistent URLs And Child Subdomains";
 const pageDescription =
-  "Expose localhost over HTTPS with Bore. Get a real HTTPS URL for local websites, Node.js, Next.js, and Vite dev servers, plus persistent namespaces and HTTPS child subdomains like api.bo.bore.dk.";
+  "Expose localhost over HTTPS with Bore. Get a real HTTPS URL for local websites, APIs, Node.js, React, Next.js, and Vite dev servers, plus stable webhook, OAuth, and child-subdomain workflows like api.bo.bore.dk.";
 
 export const metadata: Metadata = {
   title: pageTitle,
@@ -61,7 +61,8 @@ export default async function Home() {
         },
         featureList: [
           "HTTPS for localhost development",
-          "HTTPS for Node.js, Next.js, and Vite dev servers",
+          "HTTPS for local websites, APIs, and common dev frameworks",
+          "Stable webhook and OAuth callback URLs",
           "Persistent subdomains",
           "Managed namespaces and child subdomains",
           "Web control plane",

@@ -3,7 +3,7 @@ import Script from "next/script";
 import { notFound } from "next/navigation";
 
 import { GuidePage } from "@/components/guide-page";
-import { GUIDES, getGuide } from "@/lib/guide-content";
+import { GUIDES, getGuide, getRelatedGuides } from "@/lib/guide-content";
 import { getSiteOrigin } from "@/lib/env";
 
 type GuidePageProps = {
@@ -54,16 +54,40 @@ export default async function GuideDetailPage({ params }: GuidePageProps) {
 
   const siteOrigin = getSiteOrigin();
   const url = `${siteOrigin}/guides/${guide.slug}`;
-  const relatedGuides = GUIDES.filter((item) => item.slug !== guide.slug).slice(0, 4);
+  const relatedGuides = getRelatedGuides(guide);
   const structuredData = {
     "@context": "https://schema.org",
     "@graph": [
+      {
+        "@type": "BreadcrumbList",
+        itemListElement: [
+          {
+            "@type": "ListItem",
+            position: 1,
+            name: "Bore",
+            item: siteOrigin,
+          },
+          {
+            "@type": "ListItem",
+            position: 2,
+            name: "Guides",
+            item: `${siteOrigin}/guides`,
+          },
+          {
+            "@type": "ListItem",
+            position: 3,
+            name: guide.title,
+            item: url,
+          },
+        ],
+      },
       {
         "@type": "TechArticle",
         headline: guide.title,
         description: guide.description,
         url,
         keywords: guide.queries.join(", "),
+        dateModified: guide.updatedAt,
         author: {
           "@type": "Person",
           name: "Casper Fenger Jensen",
@@ -78,17 +102,6 @@ export default async function GuideDetailPage({ params }: GuidePageProps) {
           "@type": "HowToStep",
           name: step.title,
           text: step.body,
-        })),
-      },
-      {
-        "@type": "FAQPage",
-        mainEntity: guide.faq.map((item) => ({
-          "@type": "Question",
-          name: item.question,
-          acceptedAnswer: {
-            "@type": "Answer",
-            text: item.answer,
-          },
         })),
       },
     ],

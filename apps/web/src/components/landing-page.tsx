@@ -295,8 +295,8 @@ export function LandingPage({
             <p className="max-w-2xl text-lg leading-8 text-zinc-400">
               The authenticated control plane for exposing local services over
               HTTPS. Managed namespaces, child hosts, live SQLite-backed
-              telemetry, and persistent tunnels for localhost, Node.js,
-              Next.js, and Vite development.
+              telemetry, and persistent tunnels for localhost, APIs, React,
+              Node.js, Next.js, Vite, webhooks, and OAuth-heavy development.
             </p>
           </div>
 
@@ -331,24 +331,24 @@ export function LandingPage({
             </Link>
             ,{" "}
             <Link
-              href="/guides/https-nextjs-dev"
+              href="/guides/local-api-https"
               className="text-zinc-300 transition hover:text-white"
             >
-              how to HTTPS Next.js dev
+              local API HTTPS
             </Link>
             ,{" "}
             <Link
-              href="/guides/https-node-run-dev"
+              href="/guides/webhook-testing-localhost"
               className="text-zinc-300 transition hover:text-white"
             >
-              how to HTTPS Node run dev
+              webhook testing on localhost
             </Link>
             ,{" "}
             <Link
-              href="/guides/https-vite-local"
+              href="/guides/oauth-callback-localhost-https"
               className="text-zinc-300 transition hover:text-white"
             >
-              try Vite local on HTTPS
+              OAuth callbacks on HTTPS
             </Link>
             ,{" "}
             <Link

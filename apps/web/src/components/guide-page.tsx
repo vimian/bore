@@ -27,6 +27,9 @@ export function GuidePage({ guide, relatedGuides }: GuidePageProps) {
           <p className="text-xs font-semibold uppercase tracking-[0.28em] text-cyan-300">
             Developer Guide
           </p>
+          <p className="mt-3 text-sm text-zinc-500">
+            Written by Casper Fenger Jensen • Updated {guide.updatedAt}
+          </p>
           <h1 className="mt-4 max-w-4xl font-[family-name:var(--font-display)] text-4xl leading-tight text-white sm:text-5xl">
             {guide.title}
           </h1>
@@ -112,8 +115,8 @@ export function GuidePage({ guide, relatedGuides }: GuidePageProps) {
             <code>{"bore host add <namespace> api\nbore host set-port <namespace> api 3001"}</code>
           </pre>
           <p className="mt-4 text-sm leading-7 text-zinc-400">
-            That makes Bore a stronger fit when frontend and API origins need to stay separate in
-            local development.
+            That matters when frontend and API origins need to stay separate in local development,
+            or when webhook, auth, and admin traffic should not all share one hostname.
           </p>
         </section>
 
