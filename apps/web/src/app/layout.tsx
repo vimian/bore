@@ -24,9 +24,9 @@ const mono = Geist_Mono({
 const siteOrigin = getSiteOrigin();
 const siteURL = new URL(siteOrigin);
 const siteName = "Bore";
-const defaultTitle = "Bore | Secure Tunneling For Localhost, APIs, And Dev Environments";
+const defaultTitle = "Bore | HTTPS Tunnels For Localhost, APIs, And Dev Environments";
 const defaultDescription =
-  "Bore is an open source tunneling platform for exposing localhost securely with managed subdomains, persistent tunnels, and a web control plane.";
+  "Bore is an open source tunneling platform for exposing localhost over HTTPS with managed namespaces, child subdomains, persistent tunnels, and a web control plane.";
 
 export const metadata: Metadata = {
   metadataBase: siteURL,
@@ -51,14 +51,21 @@ export const metadata: Metadata = {
   description: defaultDescription,
   keywords: [
     "bore",
+    "https localhost",
+    "https local website",
+    "ssl local development",
     "secure tunneling",
     "localhost tunnel",
     "open source tunnel",
     "ngrok alternative",
     "dev tunnel",
+    "https nextjs dev",
+    "https node dev",
+    "vite https local",
     "webhook testing",
     "persistent tunnels",
     "custom subdomains",
+    "child subdomain https",
     "developer tools",
   ],
   alternates: {

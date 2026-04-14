@@ -7,9 +7,9 @@ import { formatCompactNumber, getGitHubStars } from "@/lib/github";
 import { getCurrentUser } from "@/lib/session";
 
 const siteOrigin = getSiteOrigin();
-const pageTitle = "Open Source Localhost Tunneling With Persistent URLs";
+const pageTitle = "HTTPS For Localhost With Persistent URLs And Child Subdomains";
 const pageDescription =
-  "Expose localhost securely with Bore. Get an open source tunnel, managed subdomains, persistent URLs, browser-based login, and a web control plane for local development and webhook testing.";
+  "Expose localhost over HTTPS with Bore. Get a real HTTPS URL for local websites, Node.js, Next.js, and Vite dev servers, plus persistent namespaces and HTTPS child subdomains like api.bo.bore.dk.";
 
 export const metadata: Metadata = {
   title: pageTitle,
@@ -60,9 +60,10 @@ export default async function Home() {
           priceCurrency: "USD",
         },
         featureList: [
-          "Secure localhost tunneling",
+          "HTTPS for localhost development",
+          "HTTPS for Node.js, Next.js, and Vite dev servers",
           "Persistent subdomains",
-          "Managed namespaces",
+          "Managed namespaces and child subdomains",
           "Web control plane",
           "Open source client and server",
         ],

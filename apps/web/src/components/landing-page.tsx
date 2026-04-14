@@ -144,9 +144,9 @@ const productCards = [
   },
   {
     eyebrow: "Managed Namespaces",
-    title: "Persistent public URLs without fragile manual routing.",
+    title: "Persistent HTTPS URLs without fragile manual routing.",
     copy:
-      "Reserve `pia.bore.dk`, attach approved child hosts, and keep tunnel ownership explicit across the team.",
+      "Reserve `pia.bore.dk`, attach HTTPS child hosts like `api.pia.bore.dk`, and keep tunnel ownership explicit across the team.",
     className: "",
     icon: ShieldCheck,
     content: (
@@ -170,6 +170,7 @@ const footerColumns = [
     title: "Product",
     links: [
       { label: "Features", href: "#features" },
+      { label: "Guides", href: "/guides" },
       { label: "Dashboard", href: "/dashboard" },
       { label: "Open Source", href: "#open-source" },
     ],
@@ -177,6 +178,7 @@ const footerColumns = [
   {
     title: "Resources",
     links: [
+      { label: "HTTPS Guides", href: "/guides" },
       { label: "Docs", href: GITHUB_DOCS_URL, external: true },
       { label: "Source Code", href: GITHUB_REPO_URL, external: true },
       {
@@ -241,6 +243,9 @@ export function LandingPage({
             <a href="#features" className="transition hover:text-white">
               Features
             </a>
+            <Link href="/guides" className="transition hover:text-white">
+              Guides
+            </Link>
             <a
               href={GITHUB_DOCS_URL}
               target="_blank"
@@ -288,9 +293,10 @@ export function LandingPage({
               </span>
             </h1>
             <p className="max-w-2xl text-lg leading-8 text-zinc-400">
-              The authenticated control plane for exposing local services.
-              Managed namespaces, live SQLite-backed telemetry, and persistent
-              tunnels.
+              The authenticated control plane for exposing local services over
+              HTTPS. Managed namespaces, child hosts, live SQLite-backed
+              telemetry, and persistent tunnels for localhost, Node.js,
+              Next.js, and Vite development.
             </p>
           </div>
 
@@ -314,6 +320,45 @@ export function LandingPage({
           </div>
 
           <InstallCommandCopy command={INSTALL_COMMAND} />
+
+          <p className="max-w-3xl text-sm leading-7 text-zinc-500">
+            Popular guides:{" "}
+            <Link
+              href="/guides/https-local-website"
+              className="text-zinc-300 transition hover:text-white"
+            >
+              HTTPS local website
+            </Link>
+            ,{" "}
+            <Link
+              href="/guides/https-nextjs-dev"
+              className="text-zinc-300 transition hover:text-white"
+            >
+              how to HTTPS Next.js dev
+            </Link>
+            ,{" "}
+            <Link
+              href="/guides/https-node-run-dev"
+              className="text-zinc-300 transition hover:text-white"
+            >
+              how to HTTPS Node run dev
+            </Link>
+            ,{" "}
+            <Link
+              href="/guides/https-vite-local"
+              className="text-zinc-300 transition hover:text-white"
+            >
+              try Vite local on HTTPS
+            </Link>
+            ,{" "}
+            <Link
+              href="/guides/child-subdomain-https"
+              className="text-zinc-300 transition hover:text-white"
+            >
+              HTTPS child subdomains
+            </Link>
+            .
+          </p>
 
           <div className="grid gap-4 sm:grid-cols-3">
             {[
@@ -577,8 +622,8 @@ export function LandingPage({
                 BORE
               </Link>
               <p className="mt-3 max-w-md text-sm leading-7 text-zinc-400">
-                Secure tunneling with managed namespaces, live telemetry, and a
-                clear control plane.
+                HTTPS tunneling for localhost with managed namespaces, child
+                hosts, live telemetry, and a clear control plane.
               </p>
             </div>
             <p>&copy; 2026 Bore.dk. Open Source under MIT License.</p>
