@@ -404,6 +404,7 @@ func handleRelease(args []string) error {
 	}
 
 	fmt.Printf("Released namespace %s.\n", result.ReleasedSubdomain)
+	fmt.Printf("Removed tunnel claims: %d\n", result.RemovedClaimsCount)
 	if len(result.RemovedAccessHostIDs) == 0 {
 		fmt.Println("Removed child hosts: none")
 		return nil

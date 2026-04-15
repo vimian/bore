@@ -82,6 +82,7 @@ type NamespaceView struct {
 
 type NamespaceReleaseResponse struct {
 	ReleasedSubdomain    string   `json:"releasedSubdomain"`
+	RemovedClaimsCount   int      `json:"removedClaimsCount"`
 	RemovedAccessHostIDs []string `json:"removedAccessHostnames"`
 }
 

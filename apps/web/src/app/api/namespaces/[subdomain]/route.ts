@@ -30,6 +30,7 @@ export async function DELETE(
   const payload = (await response.json().catch(() => ({ error: undefined }))) as {
     error?: string;
     releasedSubdomain?: string;
+    removedClaimsCount?: number;
     removedAccessHostnames?: string[];
   };
 

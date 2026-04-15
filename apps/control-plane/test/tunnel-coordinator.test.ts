@@ -352,12 +352,13 @@ test("releases an unused namespace and removes its child hosts", async () => {
   const released = await coordinator.releaseNamespace(user, assigned);
 
   assert.equal(released.releasedSubdomain, assigned);
+  assert.equal(released.removedClaimsCount, 0);
   assert.deepEqual(released.removedAccessHostnames, [`admin.${assigned}`]);
   assert.deepEqual(coordinator.listReservedSubdomains(), []);
   assert.deepEqual(coordinator.listAccessHosts(), []);
 });
 
-test("does not release a namespace while it still has tunnel claims", async () => {
+test("releasing a namespace clears active and stale claims across devices", async () => {
   const { coordinator, user } = await setupCoordinator();
 
   await coordinator.setDeviceConnection("device-one", true);
@@ -365,11 +366,61 @@ test("does not release a namespace while it still has tunnel claims", async () =
   const assigned = (await coordinator.listUserTunnels(user.id))[0]?.subdomain;
 
   assert.ok(assigned);
+  await coordinator.reserveAccessHostname(user, assigned, "admin");
+  await coordinator.setDeviceConnection("device-one", false);
+  await coordinator.setDeviceConnection("device-two", true);
+  await coordinator.syncDeviceTunnels(user, "device-two", [
+    { localPort: 4000, preferredSubdomain: assigned },
+  ]);
 
-  await assert.rejects(
-    () => coordinator.releaseNamespace(user, assigned),
-    /still has 1 tunnel claim/,
+  const namespaceBeforeRelease = coordinator.listUserNamespaces(user).find(
+    (item) => item.subdomain === assigned,
   );
+
+  assert.equal(namespaceBeforeRelease?.claims.length, 2);
+  assert.deepEqual(
+    namespaceBeforeRelease?.claims.map((claim) => claim.status).sort(),
+    ["active", "offline"],
+  );
+
+  const released = await coordinator.releaseNamespace(user, assigned);
+
+  assert.equal(released.releasedSubdomain, assigned);
+  assert.equal(released.removedClaimsCount, 2);
+  assert.deepEqual(released.removedAccessHostnames, [`admin.${assigned}`]);
+  assert.deepEqual(await coordinator.listUserTunnels(user.id), []);
+  assert.deepEqual(coordinator.listReservedSubdomains(), []);
+  assert.deepEqual(coordinator.listAccessHosts(), []);
+});
+
+test("sync reports a released preferred namespace as a tunnel failure", async () => {
+  const { coordinator, user } = await setupCoordinator();
+
+  await coordinator.setDeviceConnection("device-one", true);
+  await coordinator.syncDeviceTunnels(user, "device-one", [{ localPort: 3000 }]);
+  const assigned = (await coordinator.listUserTunnels(user.id))[0]?.subdomain;
+
+  assert.ok(assigned);
+  await coordinator.releaseNamespace(user, assigned);
+  await coordinator.setDeviceConnection("device-one", true);
+
+  const sync = await coordinator.syncDeviceTunnels(user, "device-one", [
+    { localPort: 3000, preferredSubdomain: assigned },
+    { localPort: 4000, allocateNewSubdomain: true },
+  ]);
+
+  assert.deepEqual(sync.failedTunnels, [
+    {
+      localPort: 3000,
+      subdomain: assigned,
+      code: "namespace_not_reserved_for_account",
+      message:
+        `Namespace ${assigned} is not reserved for this account. ` +
+        "It may have been released. Pick another reserved namespace or generate a new one.",
+    },
+  ]);
+  assert.equal(sync.tunnels.length, 1);
+  assert.equal(sync.tunnels[0]?.localPort, 4000);
 });
 
 test("enforces the per-user child hostname limit for reserved child hosts", async () => {

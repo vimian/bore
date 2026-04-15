@@ -489,6 +489,7 @@ export async function startServer(): Promise<void> {
           await traefikManager?.reconcile(store.snapshot());
           respondJson(response, 200, {
             releasedSubdomain: released.releasedSubdomain,
+            removedClaimsCount: released.removedClaimsCount,
             removedAccessHostnames: released.removedAccessHostnames.map(
               (hostname) => `${hostname}.${config.publicDomain}`,
             ),

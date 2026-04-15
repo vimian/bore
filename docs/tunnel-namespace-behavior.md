@@ -17,20 +17,20 @@ This note captures the intended product behavior for namespace ownership in `bor
 - If a user shuts down a computer and later starts `bore` again, the client should keep using the same reserved namespace for that tunnel when possible.
 - `bore down <port>` stops the tunnel claim for that port, but does not delete the user's reserved namespace.
 - If the user later runs `bore up` on a different port, they should be able to reuse the old reserved namespace.
-- `bore release <namespace>` permanently deletes an unused reserved namespace and every reserved child host under it.
-- A namespace can only be released after every tunnel claim for it has been removed with `bore down`.
+- `bore release <namespace>` permanently deletes the reserved namespace, every reserved child host under it, and every active or stale tunnel claim linked to it.
+- Releasing a namespace must not require the user to start old computers and run `bore down` everywhere first.
 
 ## Multi-device behavior
 
 - A user may reuse any of their reserved namespaces on another device when that namespace is not actively claimed by a live device.
 - If device B reuses a namespace while device A is offline, and device A later reconnects with the same namespace, device A should fail that tunnel sync until device B disconnects or releases that namespace.
-- Releasing can happen because the active device goes offline or because it runs `bore down <port>` for the tunnel using that namespace.
+- If any device later tries to sync a preferred namespace that has been released, that tunnel should fail cleanly and tell the user to pick another namespace or generate a new one.
 
 ## CLI expectations
 
 - `bore up <port>` should prompt for reuse vs generating a new namespace when reusable reserved namespaces exist.
 - If the chosen namespace is already active on another live device, `bore up <port>` should fail for that tunnel instead of creating a second live claim.
-- `bore release <namespace>` should let the user remove a no-longer-needed reserved namespace once it has no claim records.
+- `bore release <namespace>` should let the user remove a no-longer-needed reserved namespace even when stale claim records still exist on other devices.
 - `bore reassign <port>` should let the user switch a running tunnel to a different reserved namespace that is not active elsewhere, or generate a new one.
 - `bore host set-port <namespace> <label> <port>` should let the user keep the namespace root on its main tunnel port while routing that reserved child host to a different local port.
 - `bore host clear-port <namespace> <label>` should remove that child-host-specific override so it falls back to the namespace's main tunnel port.

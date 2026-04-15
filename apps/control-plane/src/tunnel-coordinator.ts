@@ -12,7 +12,7 @@ import {
   DEFAULT_RESERVATION_LIMIT,
   setDeviceConnection as persistDeviceConnection,
 } from "./store.js";
-import { badRequest, conflict } from "./errors.js";
+import { UserFacingError, badRequest, conflict } from "./errors.js";
 import type {
   AccessHostRecord,
   DesiredTunnelInput,
@@ -130,7 +130,25 @@ export class TunnelCoordinator {
             candidate.deviceId === deviceId &&
             candidate.localPort === desiredTunnel.localPort,
         );
-        const reservation = this.upsertReservation(state, user, desiredTunnel, existingTunnel);
+        let reservation: TunnelReservationRecord;
+
+        try {
+          reservation = this.upsertReservation(state, user, desiredTunnel, existingTunnel);
+        } catch (error) {
+          const reservationFailure = this.buildReservationFailure(desiredTunnel, error);
+
+          if (!reservationFailure) {
+            throw error;
+          }
+
+          if (existingTunnel) {
+            delete state.deviceTunnels[existingTunnel.id];
+          }
+
+          failed.push(reservationFailure);
+          continue;
+        }
+
         const activeConflict = this.findActiveConflict(
           state,
           reservation.id,
@@ -525,7 +543,11 @@ export class TunnelCoordinator {
   async releaseNamespace(
     user: UserRecord,
     subdomainInput: string,
-  ): Promise<{ releasedSubdomain: string; removedAccessHostnames: string[] }> {
+  ): Promise<{
+    releasedSubdomain: string;
+    removedAccessHostnames: string[];
+    removedClaimsCount: number;
+  }> {
     const subdomain = normalizeReservedSubdomain(subdomainInput);
 
     return this.store.update((state) => {
@@ -541,26 +563,19 @@ export class TunnelCoordinator {
         );
       }
 
-      const claims = Object.values(state.deviceTunnels).filter(
-        (tunnel) => tunnel.reservationId === reservation.id,
-      );
-
-      if (claims.length > 0) {
-        const suffix = claims.length === 1 ? "" : "s";
-        throw conflict(
-          "namespace_has_active_claims",
-          `Namespace ${subdomain} still has ${claims.length} tunnel claim${suffix}. Run bore down for every tunnel using it before releasing the reservation.`,
-          {
-            claimsCount: claims.length,
-            subdomain,
-          },
-        );
-      }
+      const claimIds = Object.values(state.deviceTunnels)
+        .filter((tunnel) => tunnel.reservationId === reservation.id)
+        .map((tunnel) => tunnel.id);
+      const removedClaimsCount = claimIds.length;
 
       const removedAccessHostnames = Object.values(state.accessHosts)
         .filter((accessHost) => accessHost.reservationId === reservation.id)
         .map((accessHost) => accessHost.hostname)
         .sort();
+
+      for (const claimId of claimIds) {
+        delete state.deviceTunnels[claimId];
+      }
 
       for (const accessHost of Object.values(state.accessHosts)) {
         if (accessHost.reservationId === reservation.id) {
@@ -573,6 +588,7 @@ export class TunnelCoordinator {
       return {
         releasedSubdomain: reservation.subdomain,
         removedAccessHostnames,
+        removedClaimsCount,
       };
     });
   }
@@ -695,6 +711,42 @@ export class TunnelCoordinator {
       code: "namespace_active_elsewhere",
       message: `Namespace ${reservation.subdomain} is already active on ${deviceName}. Stop it there with bore down <port> before using it here.`,
     };
+  }
+
+  private buildReservationFailure(
+    desiredTunnel: DesiredTunnelInput,
+    error: unknown,
+  ): SyncTunnelFailure | undefined {
+    if (!(error instanceof UserFacingError) || !desiredTunnel.preferredSubdomain) {
+      return undefined;
+    }
+
+    const normalizedPreferred = normalizeReservedSubdomain(desiredTunnel.preferredSubdomain);
+
+    if (error.code === "namespace_not_reserved_for_account") {
+      return {
+        localPort: desiredTunnel.localPort,
+        subdomain: normalizedPreferred,
+        code: error.code,
+        message:
+          `Namespace ${normalizedPreferred} is not reserved for this account. ` +
+          "It may have been released. Pick another reserved namespace or generate a new one.",
+      };
+    }
+
+    if (
+      error.code === "namespace_already_reserved" ||
+      error.code === "subdomain_includes_public_suffix"
+    ) {
+      return {
+        localPort: desiredTunnel.localPort,
+        subdomain: normalizedPreferred,
+        code: error.code,
+        message: error.message,
+      };
+    }
+
+    return undefined;
   }
 
   private buildTunnelViews(state: PersistedState, userId: string): TunnelView[] {
