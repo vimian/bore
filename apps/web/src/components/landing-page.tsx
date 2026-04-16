@@ -295,8 +295,10 @@ export function LandingPage({
             <p className="max-w-2xl text-lg leading-8 text-zinc-400">
               The authenticated control plane for exposing local services over
               HTTPS. Managed namespaces, child hosts, live SQLite-backed
-              telemetry, and persistent tunnels for localhost, APIs, React,
-              Node.js, Next.js, Vite, webhooks, and OAuth-heavy development.
+              telemetry, persistent tunnels, and loopback hostnames like
+              `l.bore.dk`, `local.bore.dk`, and `localhost.bore.dk` for
+              localhost, APIs, React, Node.js, Next.js, Vite, webhooks, and
+              OAuth-heavy development.
             </p>
           </div>
 
@@ -356,6 +358,13 @@ export function LandingPage({
               className="text-zinc-300 transition hover:text-white"
             >
               HTTPS child subdomains
+            </Link>
+            ,{" "}
+            <Link
+              href="/guides/localhost-like-loopback-hostnames"
+              className="text-zinc-300 transition hover:text-white"
+            >
+              localhost-like loopback hostnames
             </Link>
             .
           </p>

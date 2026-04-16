@@ -2,6 +2,63 @@ import type { Guide } from "@/lib/guides/types";
 
 export const FEATURE_GUIDES: Guide[] = [
   {
+    slug: "localhost-like-loopback-hostnames",
+    category: "features",
+    title: "Loopback Hostnames for Local Development on Bore",
+    description:
+      "Use short Bore hostnames that resolve to 127.0.0.1 for local development, including l.bore.dk, local.bore.dk, localhost.bore.dk, and child hosts under each of them.",
+    intro:
+      "Sometimes you do not need a public HTTPS tunnel at all. You just need a repeatable hostname that behaves like localhost while still letting you test cookies, host-based routing, callbacks, and subdomain logic on your own machine. Bore now supports loopback hostnames like `l.bore.dk`, `local.bore.dk`, and `localhost.bore.dk`, plus child hosts under each one.",
+    updatedAt: "2026-04-16",
+    queries: [
+      "l.bore.dk",
+      "local.bore.dk",
+      "localhost.bore.dk",
+      "127.0.0.1 custom domain",
+      "localhost subdomains for local development",
+      "wildcard localhost domain",
+    ],
+    highlights: [
+      "Maps Bore hostnames to 127.0.0.1 for local-only development",
+      "Supports child hosts like api.l.bore.dk and auth.local.bore.dk",
+      "Useful for cookie, callback, and host-based routing tests without public exposure",
+    ],
+    steps: [
+      {
+        title: "Keep your local app on its normal port",
+        body: "Run the local website or API on the same port you already use, such as 3000, 5173, 8080, or 8787.",
+      },
+      {
+        title: "Open the Bore loopback hostname on that port",
+        body: "Use any of the Bore loopback hostnames directly in the browser, including `l.bore.dk`, `local.bore.dk`, or `localhost.bore.dk`.",
+        code: "http://l.bore.dk:3000\nhttp://local.bore.dk:5173\nhttp://localhost.bore.dk:8080",
+      },
+      {
+        title: "Use child hosts when one hostname is not enough",
+        body: "Host-based routing and multi-origin local setups can use child hosts under the same loopback namespace.",
+        code: "http://api.l.bore.dk:3001\nhttp://auth.local.bore.dk:3000\nhttp://admin.localhost.bore.dk:4173",
+      },
+      {
+        title: "Use Bore tunnels only when you need outside access",
+        body: "The loopback hostnames are for local-only access on your own machine. Switch to `bore up` when a phone, teammate, webhook sender, or OAuth provider needs to reach the service from outside your computer.",
+      },
+    ],
+    faq: [
+      {
+        question: "What do l.bore.dk, local.bore.dk, and localhost.bore.dk do?",
+        answer: "They give you Bore-managed hostnames that resolve to 127.0.0.1 for local development. That means your browser can use a named host instead of plain localhost or a raw loopback IP.",
+      },
+      {
+        question: "Can I use subdomains like api.l.bore.dk or app.local.bore.dk?",
+        answer: "Yes. Bore supports child hosts under these loopback names, so you can test host-based routing and split local origins on your own machine.",
+      },
+      {
+        question: "Are these hostnames public?",
+        answer: "No. They are meant to point back to your own local machine at 127.0.0.1, so they are useful for local-only browser and development workflows rather than public sharing.",
+      },
+    ],
+  },
+  {
     slug: "split-frontend-api-origins",
     category: "features",
     title: "How to Split Frontend and API Origins in Local HTTPS Development",

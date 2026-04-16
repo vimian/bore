@@ -4,9 +4,9 @@ import Link from "next/link";
 import { GUIDE_GROUPS, getGuidesByCategory } from "@/lib/guide-content";
 import { getSiteOrigin } from "@/lib/env";
 
-const pageTitle = "Local HTTPS Guides for Frameworks, APIs, Webhooks, and Localhost";
+const pageTitle = "Local HTTPS Guides for Frameworks, APIs, Localhost, and Loopback Hostnames";
 const pageDescription =
-  "Bore guides for local HTTPS development across frameworks and workflows, including localhost SSL, local APIs, webhooks, OAuth callbacks, secure cookies, mobile testing, and child subdomains.";
+  "Bore guides for local HTTPS development across frameworks and workflows, including localhost SSL, local APIs, loopback hostnames like l.bore.dk and local.bore.dk, webhooks, OAuth callbacks, secure cookies, mobile testing, and child subdomains.";
 
 export const metadata: Metadata = {
   title: pageTitle,
@@ -27,6 +27,11 @@ export const metadata: Metadata = {
     "secure cookies local dev",
     "local api https",
     "https child subdomain localhost",
+    "l.bore.dk",
+    "local.bore.dk",
+    "localhost.bore.dk",
+    "localhost subdomains",
+    "127.0.0.1 custom domain",
   ],
   openGraph: {
     title: `Bore | ${pageTitle}`,
@@ -62,8 +67,8 @@ export default function GuidesIndexPage() {
           <p className="mt-5 text-base leading-7 text-zinc-400">
             These pages are built around real developer tasks, not just framework names. The
             library now covers local websites, local APIs, React, Next.js, Vite, Node.js, webhook
-            testing, OAuth callbacks, secure cookies, mobile-device testing, and Bore's child-host
-            HTTPS routing.
+            testing, OAuth callbacks, secure cookies, mobile-device testing, Bore's child-host
+            HTTPS routing, and Bore loopback hostnames for 127.0.0.1 development.
           </p>
         </header>
 

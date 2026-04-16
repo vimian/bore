@@ -7,13 +7,22 @@ import { formatCompactNumber, getGitHubStars } from "@/lib/github";
 import { getCurrentUser } from "@/lib/session";
 
 const siteOrigin = getSiteOrigin();
-const pageTitle = "HTTPS For Localhost With Persistent URLs And Child Subdomains";
+const pageTitle = "HTTPS For Localhost, Loopback Hostnames, Persistent URLs, And Child Subdomains";
 const pageDescription =
-  "Expose localhost over HTTPS with Bore. Get a real HTTPS URL for local websites, APIs, Node.js, React, Next.js, and Vite dev servers, plus stable webhook, OAuth, and child-subdomain workflows like api.bo.bore.dk.";
+  "Expose localhost over HTTPS with Bore. Get real HTTPS URLs for local websites, APIs, Node.js, React, Next.js, and Vite dev servers, plus loopback hostnames like l.bore.dk, local.bore.dk, localhost.bore.dk, stable webhook callbacks, OAuth flows, and child-subdomain workflows like api.bo.bore.dk.";
 
 export const metadata: Metadata = {
   title: pageTitle,
   description: pageDescription,
+  keywords: [
+    "l.bore.dk",
+    "local.bore.dk",
+    "localhost.bore.dk",
+    "127.0.0.1 custom domain",
+    "localhost subdomains",
+    "https localhost",
+    "child subdomain localhost",
+  ],
   alternates: {
     canonical: "/",
   },
@@ -61,6 +70,8 @@ export default async function Home() {
         },
         featureList: [
           "HTTPS for localhost development",
+          "Loopback hostnames for local development",
+          "l.bore.dk, local.bore.dk, and localhost.bore.dk hostnames for 127.0.0.1",
           "HTTPS for local websites, APIs, and common dev frameworks",
           "Stable webhook and OAuth callback URLs",
           "Persistent subdomains",
