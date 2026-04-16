@@ -67,7 +67,7 @@ BORE_TOKEN_SECRET=change-me
 pnpm dev:server
 ```
 
-For production with automatic DNS + Let's Encrypt wildcard certificates:
+For a standalone self-hosted control plane with automatic DNS + Let's Encrypt wildcard certificates:
 
 ```bash
 BORE_SERVER_ORIGIN=https://bore.example.com
@@ -130,7 +130,10 @@ See `LICENSE` and `COMMERCIAL-LICENSE.md` for the governing terms.
 
 ## Notes
 
-- Production TLS is now built into the control plane through ACME DNS-01, but it requires a DNS hook command.
+- The standalone `BORE_TLS_MODE=acme` path issues certificates through the control plane with ACME DNS-01, but it requires a DNS hook command.
+- The hosted `bore.dk` deployment on the Hetzner VPS at `91.99.163.174` currently uses Traefik ACME `http-01` for the public service and should stay on that path.
+- Do not give the public Hetzner Traefik box broad DNS API credentials just to support a private RFC1918 host such as `s.bore.dk -> 192.168.1.200`.
+- Private LAN-only names such as `s.bore.dk` should terminate on a local reverse proxy on that private host or network, and any ACME DNS-01 automation for them should be isolated through delegated `_acme-challenge` records. See `docs/acme-challenge-policy.md`.
 - The DNS hook is called with `BORE_DNS_ACTION`, `BORE_DNS_NAME`, `BORE_DNS_TYPE`, `BORE_DNS_VALUE`, and `BORE_DNS_TTL`.
 - Set `BORE_INGRESS_RECORD_VALUE` to automatically create both `<subdomain>.<domain>` and `*.<subdomain>.<domain>` DNS records for each reserved tunnel namespace.
 - The server-to-agent path stays on the existing websocket relay. With an `https://` server origin it upgrades to `wss://`, which keeps the relay encrypted without adding SSH session overhead.
