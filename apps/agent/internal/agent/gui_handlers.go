@@ -3,7 +3,11 @@ package agent
 import "net/http"
 
 func (server *guiServer) handleHealth(w http.ResponseWriter, _ *http.Request) {
-	respondJSON(w, http.StatusOK, map[string]any{"ok": true})
+	respondJSON(w, http.StatusOK, map[string]any{
+		"ok":      true,
+		"service": "bore-gui",
+		"port":    server.port,
+	})
 }
 
 func (server *guiServer) handleStop(w http.ResponseWriter, r *http.Request) {

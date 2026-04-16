@@ -7,7 +7,8 @@ var guiAutostartTarget = autostartTarget{
 	label:       "dev.bore.gui",
 	serviceName: "bore-gui.service",
 	description: "Bore GUI",
-	args:        []string{"gui", "serve"},
+	args:        []string{"gui", "serve", "--open"},
+	restart:     "on-failure",
 }
 
 func ensureGUIAutostart(config AgentConfig) (bool, error) {

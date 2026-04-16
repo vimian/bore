@@ -18,6 +18,7 @@ type autostartTarget struct {
 	serviceName string
 	description string
 	args        []string
+	restart     string
 }
 
 func installAutostartTarget(target autostartTarget, installed bool) (bool, error) {
@@ -119,7 +120,7 @@ func installLaunchAgent(target autostartTarget, executable string) (bool, error)
 		strings.Join(programArguments, ""),
 		`</array>`,
 		`<key>RunAtLoad</key><true/>`,
-		`<key>KeepAlive</key><true/>`,
+		launchAgentKeepAliveXML(target),
 		`</dict></plist>`,
 	}, "")
 	if err := os.WriteFile(plistPath, []byte(content), 0o644); err != nil {
@@ -149,7 +150,7 @@ func installSystemdUserService(target autostartTarget, executable string) (bool,
 		"",
 		"[Service]",
 		"ExecStart=" + executable + " " + strings.Join(target.args, " "),
-		"Restart=always",
+		"Restart=" + systemdRestartPolicy(target),
 		"",
 		"[Install]",
 		"WantedBy=default.target",
@@ -187,6 +188,22 @@ func uninstallWindowsAutostart(target autostartTarget) error {
 	}
 
 	return errors.Join(errs...)
+}
+
+func launchAgentKeepAliveXML(target autostartTarget) string {
+	if systemdRestartPolicy(target) == "always" {
+		return `<key>KeepAlive</key><true/>`
+	}
+
+	return `<key>KeepAlive</key><false/>`
+}
+
+func systemdRestartPolicy(target autostartTarget) string {
+	if target.restart != "" {
+		return target.restart
+	}
+
+	return "always"
 }
 
 func uninstallLaunchAgent(target autostartTarget) error {

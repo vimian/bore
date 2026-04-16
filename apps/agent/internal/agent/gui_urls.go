@@ -2,19 +2,16 @@ package agent
 
 import "fmt"
 
-const (
-	guiHost = "gui.bore.dk"
-	guiPort = 53173
-)
+const guiHost = "gui.bore.dk"
 
-func guiBrowserURL() string {
-	return fmt.Sprintf("http://%s:%d", guiHost, guiPort)
+func guiBrowserURL(port int) string {
+	return fmt.Sprintf("http://%s:%d", guiHost, port)
 }
 
-func guiLocalURL() string {
-	return fmt.Sprintf("http://127.0.0.1:%d", guiPort)
+func guiLocalURL(port int) string {
+	return fmt.Sprintf("http://127.0.0.1:%d", port)
 }
 
-func guiHealthURL() string {
-	return guiLocalURL() + "/health"
+func guiHealthURL(port int) string {
+	return guiLocalURL(port) + "/health"
 }

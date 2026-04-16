@@ -16,7 +16,7 @@ func TestBuildGUIStateReturnsEmptySlicesWhenSignedOut(t *testing.T) {
 		t.Fatalf("saveConfig returned error: %v", err)
 	}
 
-	if err := saveRuntime(RuntimeState{LastError: "daemon offline"}); err != nil {
+	if err := saveRuntime(RuntimeState{GUIPort: 53174, LastError: "daemon offline"}); err != nil {
 		t.Fatalf("saveRuntime returned error: %v", err)
 	}
 
@@ -25,11 +25,11 @@ func TestBuildGUIStateReturnsEmptySlicesWhenSignedOut(t *testing.T) {
 		t.Fatalf("buildGUIState returned error: %v", err)
 	}
 
-	if state.BrowserURL != "http://gui.bore.dk:53173" {
-		t.Fatalf("expected browser URL %q, got %q", "http://gui.bore.dk:53173", state.BrowserURL)
+	if state.BrowserURL != "http://gui.bore.dk:53174" {
+		t.Fatalf("expected browser URL %q, got %q", "http://gui.bore.dk:53174", state.BrowserURL)
 	}
-	if state.Port != 53173 {
-		t.Fatalf("expected GUI port 53173, got %d", state.Port)
+	if state.Port != 53174 {
+		t.Fatalf("expected GUI port 53174, got %d", state.Port)
 	}
 	if state.SignedIn {
 		t.Fatal("expected signed out state")

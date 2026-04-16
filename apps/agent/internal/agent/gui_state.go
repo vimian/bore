@@ -15,11 +15,12 @@ func buildGUIState() (GUIState, error) {
 	if err != nil {
 		return GUIState{}, err
 	}
+	port := guiPreferredPort(runtimeState)
 
 	state := GUIState{
-		BrowserURL:     guiBrowserURL(),
+		BrowserURL:     guiBrowserURL(port),
 		Host:           guiHost,
-		Port:           guiPort,
+		Port:           port,
 		ServerOrigin:   config.ServerOrigin,
 		DeviceName:     config.DeviceName,
 		UserEmail:      config.UserEmail,

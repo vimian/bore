@@ -15,17 +15,18 @@ import (
 
 type guiServer struct {
 	csrfToken string
+	port      int
 	server    *http.Server
 }
 
-func runGUIServer() error {
-	listeners, err := guiListeners()
+func runGUIServer(openOnStart bool) error {
+	port, listeners, err := guiListeners(guiPortCandidates())
 	if err != nil {
 		return err
 	}
 	defer closeGUIListeners(listeners)
 
-	server := &guiServer{csrfToken: randomGUISecret()}
+	server := &guiServer{csrfToken: randomGUISecret(), port: port}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", server.handleHealth)
 	mux.HandleFunc("/stop", server.handleStop)
@@ -42,8 +43,15 @@ func runGUIServer() error {
 	mux.HandleFunc("/api/close", server.handleClose)
 	server.server = &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second}
 
-	updateRuntimeForGUI(true)
-	defer updateRuntimeForGUI(false)
+	updateRuntimeForGUI(server.port, true)
+	defer updateRuntimeForGUI(0, false)
+
+	if openOnStart {
+		go func() {
+			time.Sleep(100 * time.Millisecond)
+			_ = openBrowser(guiBrowserURL(server.port))
+		}()
+	}
 
 	errCh := make(chan error, len(listeners))
 	doneCh := make(chan struct{}, len(listeners))
@@ -67,22 +75,29 @@ func runGUIServer() error {
 	return nil
 }
 
-func guiListeners() ([]net.Listener, error) {
-	addresses := []string{fmt.Sprintf("127.0.0.1:%d", guiPort), fmt.Sprintf("[::1]:%d", guiPort)}
-	listeners := make([]net.Listener, 0, len(addresses))
-	for _, address := range addresses {
-		listener, err := net.Listen("tcp", address)
-		if err != nil {
-			continue
+func guiListeners(ports []int) (int, []net.Listener, error) {
+	for _, port := range ports {
+		listeners, ok := guiListenersForPort(port)
+		if ok {
+			return port, listeners, nil
 		}
-		listeners = append(listeners, listener)
 	}
 
-	if len(listeners) == 0 {
-		return nil, fmt.Errorf("unable to bind the Bore GUI to localhost:%d", guiPort)
+	return 0, nil, fmt.Errorf("unable to bind the Bore GUI to localhost on ports %d-%d", guiStartPort, guiStartPort+guiPortAttempts-1)
+}
+
+func guiListenersForPort(port int) ([]net.Listener, bool) {
+	ipv4, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+	if err != nil {
+		return nil, false
 	}
 
-	return listeners, nil
+	listeners := []net.Listener{ipv4}
+	if ipv6, err := net.Listen("tcp", fmt.Sprintf("[::1]:%d", port)); err == nil {
+		listeners = append(listeners, ipv6)
+	}
+
+	return listeners, true
 }
 
 func closeGUIListeners(listeners []net.Listener) {
@@ -91,14 +106,14 @@ func closeGUIListeners(listeners []net.Listener) {
 	}
 }
 
-func updateRuntimeForGUI(running bool) {
+func updateRuntimeForGUI(port int, running bool) {
 	runtimeState, err := loadRuntime()
 	if err != nil {
 		return
 	}
 
 	if running {
-		runtimeState.GUIPort = guiPort
+		runtimeState.GUIPort = port
 		runtimeState.GUIPID = os.Getpid()
 	} else {
 		runtimeState.GUIPort = 0
