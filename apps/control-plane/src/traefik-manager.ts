@@ -2,7 +2,6 @@ import { mkdir, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import type { ControlPlaneConfig } from "./config.js";
-import { buildPublicHostnameVariants } from "./public-hosts.js";
 import type { PersistedState } from "./types.js";
 
 function quoteHost(host: string): string {
@@ -20,10 +19,8 @@ function buildNamespaceConfig(
   subdomain: string,
   accessHosts: string[],
 ): string {
-  const hosts = [
-    ...buildPublicHostnameVariants(subdomain, publicDomain),
-    ...accessHosts.flatMap((host) => buildPublicHostnameVariants(host, publicDomain)),
-  ].sort();
+  const hosts = [`${subdomain}.${publicDomain}`, ...accessHosts.map((host) => `${host}.${publicDomain}`)]
+    .sort();
   const rule = hosts.map(quoteHost).join(" || ");
   const name = sanitizeName(subdomain);
 

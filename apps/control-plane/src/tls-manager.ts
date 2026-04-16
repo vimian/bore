@@ -7,11 +7,6 @@ import * as acme from "acme-client";
 
 import type { ControlPlaneConfig } from "./config.js";
 import { DnsAutomation, type DnsRecordType } from "./dns-automation.js";
-import {
-  buildPublicHostnameVariants,
-  extractPublicHostNamespace,
-  listPublicHostRoots,
-} from "./public-hosts.js";
 
 interface CachedCertificate {
   key: string;
@@ -80,7 +75,6 @@ export class TlsManager {
 
   async ensureDefaultCertificate(): Promise<void> {
     await this.withLock("default", async () => {
-      await this.ensureDefaultIngressRecords();
       const certificate = await this.ensureCertificate(
         this.getDefaultCertificateCacheDir(),
         this.getDefaultCertificateNames(),
@@ -123,37 +117,6 @@ export class TlsManager {
     return this.#defaultCertificate.secureContext;
   }
 
-  private async ensureDefaultIngressRecords(): Promise<void> {
-    const value = this.config.tls.ingressRecordValue;
-
-    if (!value) {
-      return;
-    }
-
-    const type = this.config.tls.ingressRecordType as DnsRecordType;
-    const ttl = this.config.tls.dnsTtl;
-    const aliasRoots = listPublicHostRoots(this.config.publicDomain).filter(
-      (host) => host !== this.config.publicDomain,
-    );
-
-    await Promise.all(
-      aliasRoots.flatMap((host) => [
-        this.#dns.upsertRecord({
-          name: host,
-          type,
-          value,
-          ttl,
-        }),
-        this.#dns.upsertRecord({
-          name: `*.${host}`,
-          type,
-          value,
-          ttl,
-        }),
-      ]),
-    );
-  }
-
   private async ensureIngressRecords(subdomain: string): Promise<void> {
     const value = this.config.tls.ingressRecordValue;
 
@@ -163,23 +126,20 @@ export class TlsManager {
 
     const type = this.config.tls.ingressRecordType as DnsRecordType;
     const ttl = this.config.tls.dnsTtl;
+    const fqdn = `${subdomain}.${this.config.publicDomain}`;
 
-    await Promise.all(
-      buildPublicHostnameVariants(subdomain, this.config.publicDomain).flatMap((fqdn) => [
-        this.#dns.upsertRecord({
-          name: fqdn,
-          type,
-          value,
-          ttl,
-        }),
-        this.#dns.upsertRecord({
-          name: `*.${fqdn}`,
-          type,
-          value,
-          ttl,
-        }),
-      ]),
-    );
+    await this.#dns.upsertRecord({
+      name: fqdn,
+      type,
+      value,
+      ttl,
+    });
+    await this.#dns.upsertRecord({
+      name: `*.${fqdn}`,
+      type,
+      value,
+      ttl,
+    });
   }
 
   private async ensureCertificate(cacheDir: string, names: string[]): Promise<CachedCertificate> {
@@ -298,20 +258,21 @@ export class TlsManager {
   }
 
   private extractNamespace(hostname: string): string | undefined {
-    return extractPublicHostNamespace(hostname, this.config.publicDomain);
+    const normalizedHostname = hostname.toLowerCase();
+    const suffix = `.${this.config.publicDomain}`;
+
+    if (!normalizedHostname.endsWith(suffix)) {
+      return undefined;
+    }
+
+    const value = normalizedHostname.slice(0, -suffix.length);
+    return value || undefined;
   }
 
   private getDefaultCertificateNames(): string[] {
     const host = new URL(this.config.serverOrigin).hostname;
-    const publicHosts = listPublicHostRoots(this.config.publicDomain);
 
-    return [
-      ...new Set([
-        ...publicHosts,
-        ...publicHosts.map((publicHost) => `*.${publicHost}`),
-        host,
-      ]),
-    ];
+    return [...new Set([this.config.publicDomain, `*.${this.config.publicDomain}`, host])];
   }
 
   private getDefaultCertificateCacheDir(): string {
@@ -319,14 +280,8 @@ export class TlsManager {
   }
 
   private getNamespaceCertificateNames(subdomain: string): string[] {
-    return [
-      ...new Set(
-        buildPublicHostnameVariants(subdomain, this.config.publicDomain).flatMap((hostname) => [
-          hostname,
-          `*.${hostname}`,
-        ]),
-      ),
-    ];
+    const fqdn = `${subdomain}.${this.config.publicDomain}`;
+    return [fqdn, `*.${fqdn}`];
   }
 
   private getNamespaceCertificateCacheDir(subdomain: string): string {

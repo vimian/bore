@@ -99,17 +99,11 @@ test("routes the reserved base subdomain and registered child hosts", async () =
 
   const direct = coordinator.findActiveTunnelByHostname(`${assigned}.example.com`);
   const childHost = coordinator.findActiveTunnelByHostname(`api.${assigned}.example.com`);
-  const directAlias = coordinator.findActiveTunnelByHostname(`${assigned}.l.example.com`);
-  const childHostAlias = coordinator.findActiveTunnelByHostname(
-    `api.${assigned}.localhost.example.com`,
-  );
   const unknownChild = coordinator.findActiveTunnelByHostname(`admin.${assigned}.example.com`);
   const deepNested = coordinator.findActiveTunnelByHostname(`v1.api.${assigned}.example.com`);
 
   assert.equal(direct?.subdomain, assigned);
   assert.equal(childHost?.subdomain, assigned);
-  assert.equal(directAlias?.subdomain, assigned);
-  assert.equal(childHostAlias?.subdomain, assigned);
   assert.equal(unknownChild, undefined);
   assert.equal(deepNested, undefined);
 });

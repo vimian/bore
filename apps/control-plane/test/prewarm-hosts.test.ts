@@ -53,13 +53,7 @@ test("lists unique public hostnames for a device reservation and its child hosts
 
   assert.deepEqual(listDevicePublicHostnames(state, "device-1", "example.com"), [
     "api.pia.example.com",
-    "api.pia.l.example.com",
-    "api.pia.local.example.com",
-    "api.pia.localhost.example.com",
     "pia.example.com",
-    "pia.l.example.com",
-    "pia.local.example.com",
-    "pia.localhost.example.com",
   ]);
 });
 
@@ -138,15 +132,6 @@ test("only prewarms newly introduced public hostnames across syncs", () => {
       listDevicePublicHostnames(previous, "device-1", "example.com"),
       listDevicePublicHostnames(next, "device-1", "example.com"),
     ),
-    [
-      "alex.example.com",
-      "alex.l.example.com",
-      "alex.local.example.com",
-      "alex.localhost.example.com",
-      "api.alex.example.com",
-      "api.alex.l.example.com",
-      "api.alex.local.example.com",
-      "api.alex.localhost.example.com",
-    ],
+    ["alex.example.com", "api.alex.example.com"],
   );
 });
