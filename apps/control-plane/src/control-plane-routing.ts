@@ -1,9 +1,11 @@
+import { listPublicHostRoots, isKnownPublicHostname } from "./public-hosts.js";
+
 export function normalizeRequestHost(hostHeader: string | undefined): string {
   return hostHeader?.split(":")[0]?.toLowerCase() ?? "";
 }
 
 export function isKnownPublicHost(host: string, publicDomain: string): boolean {
-  return host === publicDomain || host.endsWith(`.${publicDomain}`);
+  return isKnownPublicHostname(host, publicDomain);
 }
 
 function isLoopbackHost(host: string): boolean {
@@ -15,8 +17,9 @@ export function shouldHandleControlPlaneHttpRoute(
   publicDomain: string,
 ): boolean {
   const host = normalizeRequestHost(hostHeader);
+  const controlPlaneHosts = new Set(listPublicHostRoots(publicDomain));
 
-  if (host === publicDomain) {
+  if (controlPlaneHosts.has(host)) {
     return (
       pathname === "/health"
       || pathname === "/auth/cli/start"
@@ -37,7 +40,9 @@ export function shouldHandleControlPlaneWebSocketRoute(
   pathname: string,
   publicDomain: string,
 ): boolean {
-  if (normalizeRequestHost(hostHeader) !== publicDomain) {
+  const host = normalizeRequestHost(hostHeader);
+
+  if (!listPublicHostRoots(publicDomain).includes(host)) {
     return false;
   }
 

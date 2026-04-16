@@ -39,6 +39,6 @@ The Traefik, Bore control-plane, and Bore web containers all use Docker's `resta
 
 ## Routing
 
-- `bore.dk` is served by the Next.js web app.
-- `bore.dk/api/v1`, `bore.dk/ws`, `bore.dk/health`, and the CLI auth control-plane endpoints stay routed to the Bore control-plane service.
-- Reserved namespaces and child hosts such as `foo.bore.dk` and `api.foo.bore.dk` are written into Traefik's watched config directory and routed to the Bore control-plane service.
+- `bore.dk`, `l.bore.dk`, `local.bore.dk`, and `localhost.bore.dk` are served by the Next.js web app.
+- Those same hostnames route `/api/v1`, `/ws`, `/health`, and the CLI auth control-plane endpoints to the Bore control-plane service.
+- Reserved namespaces and child hosts such as `foo.bore.dk`, `foo.l.bore.dk`, `foo.local.bore.dk`, `foo.localhost.bore.dk`, and `api.foo.bore.dk` are written into Traefik's watched config directory and routed to the Bore control-plane service.

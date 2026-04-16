@@ -1,4 +1,5 @@
 import type { PersistedState } from "./types.js";
+import { buildPublicHostnameVariants } from "./public-hosts.js";
 
 export function listDevicePublicHostnames(
   state: PersistedState,
@@ -19,14 +20,18 @@ export function listDevicePublicHostnames(
       continue;
     }
 
-    hostnames.add(`${reservation.subdomain}.${publicDomain}`.toLowerCase());
+    for (const hostname of buildPublicHostnameVariants(reservation.subdomain, publicDomain)) {
+      hostnames.add(hostname);
+    }
 
     for (const accessHost of Object.values(state.accessHosts)) {
       if (accessHost.reservationId !== reservationId) {
         continue;
       }
 
-      hostnames.add(`${accessHost.hostname}.${publicDomain}`.toLowerCase());
+      for (const hostname of buildPublicHostnameVariants(accessHost.hostname, publicDomain)) {
+        hostnames.add(hostname);
+      }
     }
   }
 

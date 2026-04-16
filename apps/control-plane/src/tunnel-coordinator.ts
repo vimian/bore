@@ -6,6 +6,7 @@ import {
   normalizeDnsLabel,
   normalizeReservedSubdomain,
 } from "./subdomains.js";
+import { extractPublicHostNamespace } from "./public-hosts.js";
 import {
   DEFAULT_ACCESS_HOST_LIMIT,
   type ControlPlaneStore,
@@ -903,16 +904,7 @@ export class TunnelCoordinator {
   }
 
   private getHostNamespace(host: string): string | undefined {
-    const normalizedHost = host.toLowerCase();
-    const suffix = `.${this.publicDomain}`;
-
-    if (!normalizedHost.endsWith(suffix) || normalizedHost === this.publicDomain) {
-      return undefined;
-    }
-
-    const hostNamespace = normalizedHost.slice(0, -suffix.length);
-
-    return hostNamespace || undefined;
+    return extractPublicHostNamespace(host, this.publicDomain);
   }
 
   private normalizeIpAddress(ipAddress: string): string | undefined {

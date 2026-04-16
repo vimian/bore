@@ -13,14 +13,14 @@ http:
     bore-control-http:
       entryPoints:
         - web
-      rule: "Host(`bore.dk`) && (PathPrefix(`/api/v1`) || PathPrefix(`/ws`) || PathPrefix(`/health`) || PathPrefix(`/auth/cli/start`) || PathPrefix(`/auth/cli/complete`))"
+      rule: "(Host(`bore.dk`) || Host(`l.bore.dk`) || Host(`local.bore.dk`) || Host(`localhost.bore.dk`)) && (PathPrefix(`/api/v1`) || PathPrefix(`/ws`) || PathPrefix(`/health`) || PathPrefix(`/auth/cli/start`) || PathPrefix(`/auth/cli/complete`))"
       priority: 100
       service: bore-service
 
     bore-control-https:
       entryPoints:
         - websecure
-      rule: "Host(`bore.dk`) && (PathPrefix(`/api/v1`) || PathPrefix(`/ws`) || PathPrefix(`/health`) || PathPrefix(`/auth/cli/start`) || PathPrefix(`/auth/cli/complete`))"
+      rule: "(Host(`bore.dk`) || Host(`l.bore.dk`) || Host(`local.bore.dk`) || Host(`localhost.bore.dk`)) && (PathPrefix(`/api/v1`) || PathPrefix(`/ws`) || PathPrefix(`/health`) || PathPrefix(`/auth/cli/start`) || PathPrefix(`/auth/cli/complete`))"
       priority: 100
       service: bore-service
       tls:
@@ -29,13 +29,13 @@ http:
     bore-web-http:
       entryPoints:
         - web
-      rule: Host(`bore.dk`)
+      rule: "Host(`bore.dk`) || Host(`l.bore.dk`) || Host(`local.bore.dk`) || Host(`localhost.bore.dk`)"
       service: bore-web-service
 
     bore-web-https:
       entryPoints:
         - websecure
-      rule: Host(`bore.dk`)
+      rule: "Host(`bore.dk`) || Host(`l.bore.dk`) || Host(`local.bore.dk`) || Host(`localhost.bore.dk`)"
       service: bore-web-service
       tls:
         certResolver: letsencrypt
