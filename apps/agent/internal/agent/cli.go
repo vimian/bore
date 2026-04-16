@@ -26,6 +26,8 @@ func usage() string {
 		"  bore host rm <namespace> <label>",
 		"  bore ps",
 		"  bore ls",
+		"  bore gui",
+		"  bore gui close",
 		"  bore uninstall",
 		"  bore self-update",
 		"  bore version",
@@ -61,6 +63,8 @@ func Run(args []string) error {
 		err = handlePs()
 	case "ls":
 		err = handleLs()
+	case "gui":
+		err = handleGUI(rest)
 	case "uninstall":
 		err = handleUninstall(rest)
 	case "daemon":

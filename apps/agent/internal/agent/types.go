@@ -87,18 +87,21 @@ type NamespaceReleaseResponse struct {
 }
 
 type AgentConfig struct {
-	ServerOrigin       string                `json:"serverOrigin"`
-	Token              string                `json:"token,omitempty"`
-	UserEmail          string                `json:"userEmail,omitempty"`
-	DeviceID           string                `json:"deviceId"`
-	DeviceName         string                `json:"deviceName"`
-	DesiredTunnels     []DesiredTunnelConfig `json:"desiredTunnels"`
-	AutostartInstalled bool                  `json:"autostartInstalled,omitempty"`
+	ServerOrigin          string                `json:"serverOrigin"`
+	Token                 string                `json:"token,omitempty"`
+	UserEmail             string                `json:"userEmail,omitempty"`
+	DeviceID              string                `json:"deviceId"`
+	DeviceName            string                `json:"deviceName"`
+	DesiredTunnels        []DesiredTunnelConfig `json:"desiredTunnels"`
+	AutostartInstalled    bool                  `json:"autostartInstalled,omitempty"`
+	GUIAutostartInstalled bool                  `json:"guiAutostartInstalled,omitempty"`
 }
 
 type RuntimeState struct {
 	ControlPort int          `json:"controlPort,omitempty"`
 	DaemonPID   int          `json:"daemonPid,omitempty"`
+	GUIPort     int          `json:"guiPort,omitempty"`
+	GUIPID      int          `json:"guiPid,omitempty"`
 	LastSyncAt  string       `json:"lastSyncAt,omitempty"`
 	LastError   string       `json:"lastError,omitempty"`
 	Tunnels     []TunnelView `json:"tunnels,omitempty"`

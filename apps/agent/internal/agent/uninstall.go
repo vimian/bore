@@ -87,6 +87,9 @@ func handleUninstall(args []string) error {
 	if err := stopDaemonIfRunning(); err != nil {
 		warnings = append(warnings, fmt.Sprintf("unable to stop daemon: %s", err))
 	}
+	if err := stopGUIIfRunning(); err != nil {
+		warnings = append(warnings, fmt.Sprintf("unable to stop GUI: %s", err))
+	}
 
 	if config != nil {
 		if err := clearRemoteDeviceClaims(*config); err != nil {
@@ -96,6 +99,9 @@ func handleUninstall(args []string) error {
 
 	if err := uninstallAutostart(); err != nil {
 		warnings = append(warnings, fmt.Sprintf("unable to remove autostart: %s", err))
+	}
+	if err := uninstallGUIAutostart(); err != nil {
+		warnings = append(warnings, fmt.Sprintf("unable to remove GUI autostart: %s", err))
 	}
 
 	if err := removeConfigDir(); err != nil {
