@@ -5,6 +5,7 @@ type GUIState struct {
 	Host           string                `json:"host"`
 	Port           int                   `json:"port"`
 	ServerOrigin   string                `json:"serverOrigin"`
+	DeviceID       string                `json:"deviceId"`
 	DeviceName     string                `json:"deviceName"`
 	UserEmail      string                `json:"userEmail,omitempty"`
 	SignedIn       bool                  `json:"signedIn"`

@@ -22,7 +22,7 @@ func renderGUIPage(csrfToken string) string {
     .actions { margin-top:14px; }
     .toggles { margin-top:12px; }
     label { display:grid; gap:6px; color:var(--muted); }
-    input { width:100%%; border:1px solid var(--line); border-radius:12px; background:#0b1220; color:var(--text); padding:10px 12px; }
+    input,select { width:100%%; border:1px solid var(--line); border-radius:12px; background:#0b1220; color:var(--text); padding:10px 12px; }
     button, a.button { border:0; border-radius:999px; background:var(--accent); color:#08111f; padding:10px 14px; font-weight:700; cursor:pointer; text-decoration:none; display:inline-flex; align-items:center; }
     button.secondary { background:#172235; color:var(--text); border:1px solid var(--line); }
     button.danger { background:var(--danger); color:#240b0a; }
@@ -67,11 +67,11 @@ func renderGUIPage(csrfToken string) string {
     <section class="stack">
       <div>
         <h2>Add Or Reassign Tunnel</h2>
-        <p>Leave namespace empty to let Bore use a new namespace or the next available reserved one.</p>
+        <p>Choose an available reserved namespace or let Bore generate a new one.</p>
       </div>
       <form id="tunnel-form" class="form-row">
-        <label><span>Local Port</span><input id="local-port" type="number" min="1" max="65535" required></label>
-        <label><span>Preferred Namespace</span><input id="namespace" type="text" placeholder="optional existing namespace"></label>
+        <label><span>Local Port</span><input id="local-port" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="5" autocomplete="off" required></label>
+        <label><span>Preferred Namespace</span><select id="namespace"></select></label>
         <button type="submit">Save Tunnel</button>
       </form>
     </section>
@@ -90,6 +90,7 @@ func renderGUIPage(csrfToken string) string {
   <script>
     const csrf = %q;
     const alertBox = document.getElementById("alert");
+    let currentState = null;
 
     async function api(path, body) {
       const response = await fetch(path, {
@@ -119,6 +120,45 @@ func renderGUIPage(csrfToken string) string {
       el.className = className || "secondary";
       el.onclick = onclick;
       return el;
+    }
+
+    function limitPortInput(input) {
+      input.value = input.value.replace(/\D/g, "").slice(0, 5);
+    }
+
+    function isActiveElsewhere(namespace, state) {
+      return namespace.claims.some((claim) => claim.deviceId !== state.deviceId && claim.status === "active");
+    }
+
+    function isClaimedByOtherLocalPort(namespace, state, localPort) {
+      return namespace.claims.some((claim) => (
+        claim.deviceId === state.deviceId && (!localPort || claim.localPort !== localPort)
+      ));
+    }
+
+    function availableNamespaces(state, localPort) {
+      return state.namespaces
+        .filter((namespace) => !isActiveElsewhere(namespace, state))
+        .filter((namespace) => !isClaimedByOtherLocalPort(namespace, state, localPort))
+        .map((namespace) => namespace.subdomain)
+        .sort((left, right) => left.localeCompare(right));
+    }
+
+    function renderNamespaceChoices(state) {
+      const select = document.getElementById("namespace");
+      const previous = select.value;
+      const localPort = Number(document.getElementById("local-port").value);
+      const options = [["", "Generate a new namespace"]].concat(
+        availableNamespaces(state, localPort).map((subdomain) => [subdomain, subdomain])
+      );
+
+      select.replaceChildren(...options.map(([value, label]) => {
+        const option = document.createElement("option");
+        option.value = value;
+        option.textContent = label;
+        return option;
+      }));
+      select.value = options.some(([value]) => value === previous) ? previous : "";
     }
 
     function renderSummary(state) {
@@ -198,7 +238,9 @@ func renderGUIPage(csrfToken string) string {
       const response = await fetch("/api/state");
       const state = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(state.error || "Unable to load Bore GUI state");
+      currentState = state;
       renderSummary(state);
+      renderNamespaceChoices(state);
       renderTunnels(state);
       renderNamespaces(state);
     }
@@ -206,7 +248,9 @@ func renderGUIPage(csrfToken string) string {
     async function run(action, success) {
       try {
         const state = await action();
+        currentState = state;
         renderSummary(state);
+        renderNamespaceChoices(state);
         renderTunnels(state);
         renderNamespaces(state);
         if (success) showAlert(success, "ok");
@@ -228,6 +272,10 @@ func renderGUIPage(csrfToken string) string {
     };
     document.getElementById("agent-autostart").onchange = (event) => run(() => api("/api/autostart/agent", { enabled: event.target.checked }), "Updated Bore agent autostart.");
     document.getElementById("gui-autostart").onchange = (event) => run(() => api("/api/autostart/gui", { enabled: event.target.checked }), "Updated Bore GUI autostart.");
+    document.getElementById("local-port").oninput = (event) => {
+      limitPortInput(event.target);
+      if (currentState) renderNamespaceChoices(currentState);
+    };
     document.getElementById("tunnel-form").onsubmit = (event) => {
       event.preventDefault();
       run(() => api("/api/tunnels", {

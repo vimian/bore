@@ -22,6 +22,7 @@ func buildGUIState() (GUIState, error) {
 		Host:           guiHost,
 		Port:           port,
 		ServerOrigin:   config.ServerOrigin,
+		DeviceID:       config.DeviceID,
 		DeviceName:     config.DeviceName,
 		UserEmail:      config.UserEmail,
 		SignedIn:       config.Token != "",

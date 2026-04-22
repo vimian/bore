@@ -31,6 +31,9 @@ func TestBuildGUIStateReturnsEmptySlicesWhenSignedOut(t *testing.T) {
 	if state.Port != 53174 {
 		t.Fatalf("expected GUI port 53174, got %d", state.Port)
 	}
+	if state.DeviceID != "device-1" {
+		t.Fatalf("expected device ID %q, got %q", "device-1", state.DeviceID)
+	}
 	if state.SignedIn {
 		t.Fatal("expected signed out state")
 	}
