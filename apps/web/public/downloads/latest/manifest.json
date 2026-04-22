@@ -1,32 +1,32 @@
 {
-  "version": "5fb9e91",
-  "commit": "5fb9e91039f6e33752398795e081968932b5ae9b",
-  "generatedAt": "2026-04-16T20:23:52.135Z",
+  "version": "ff4e8f9",
+  "commit": "ff4e8f9fc731cba4655d65a30ec336519e694aa1",
+  "generatedAt": "2026-04-22T13:40:58.892Z",
   "assets": {
     "linux-amd64": {
       "path": "bore-linux-amd64",
-      "sha256": "5908726ebaf29514af6f9480f0969938fa17a0cb0ed896a7132c345a1606bd58",
+      "sha256": "ef07a0bb3a1f354fd43f0c82b94f299a8c7393be37e3bb86f489c379bab87214",
       "size": 6881464
     },
     "linux-arm64": {
       "path": "bore-linux-arm64",
-      "sha256": "9aa3430ada3d2ad4684e7697e79678b79b81c90881fcf85dbcbba50a1fe715fd",
+      "sha256": "d5af2716c861dd5c82bd0605c8c9682a991b76699676b1bf1d9c4de124eba82c",
       "size": 6422712
     },
     "darwin-amd64": {
       "path": "bore-darwin-amd64",
-      "sha256": "1e205199d4138540d4820222d14e34fad9868c70b4e483fb96f1b84937fda82a",
-      "size": 6992112
+      "sha256": "275d8d9e96c187160c8bba0b7705f4cfbf25a45dd84f04c694d3e50952dbbe90",
+      "size": 6992128
     },
     "darwin-arm64": {
       "path": "bore-darwin-arm64",
-      "sha256": "a3bd3f336adc6de98f2fe3a31dce2868071df9da445c4d84d939a260dd5a621c",
+      "sha256": "5cc9334db622ac08ef7eb4af7cfed53a9792cababc9d9781607e9981231f23dc",
       "size": 6542994
     },
     "windows-amd64": {
       "path": "bore-windows-amd64.exe",
-      "sha256": "6fbf816b907497efc3c910cbf61dda5d8a0021a45a9d7cd9326ff4ae52ffe2bd",
-      "size": 7078912
+      "sha256": "9595be14ca9f281992f4b836566ffc6f300e50c1143ff8a452efabe752d2e771",
+      "size": 7080448
     }
   }
 }
