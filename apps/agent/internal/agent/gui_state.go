@@ -41,16 +41,26 @@ func buildGUIState() (GUIState, error) {
 	}
 
 	client := newAPIClient(config)
+	me, meErr := client.getMe()
+	if meErr == nil {
+		state.ReservationLimit = me.ReservationLimit
+	} else {
+		state.RemoteError = meErr.Error()
+	}
+
 	tunnels, tunnelErr := client.listTunnels()
 	if tunnelErr == nil {
 		state.LocalTunnels = filterDeviceTunnels(tunnels, config.DeviceID)
-	} else {
+	} else if state.RemoteError == "" {
 		state.RemoteError = tunnelErr.Error()
 	}
 
 	namespaces, namespaceErr := client.listNamespaces()
 	if namespaceErr == nil {
 		state.Namespaces = namespaces
+		if meErr == nil {
+			state.RemainingNamespaceSlots = max(me.ReservationLimit-len(namespaces), 0)
+		}
 	} else if state.RemoteError == "" {
 		state.RemoteError = namespaceErr.Error()
 	}

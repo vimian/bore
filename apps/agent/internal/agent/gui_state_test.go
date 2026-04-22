@@ -1,6 +1,10 @@
 package agent
 
-import "testing"
+import (
+	"net/http"
+	"net/http/httptest"
+	"testing"
+)
 
 func TestBuildGUIStateReturnsEmptySlicesWhenSignedOut(t *testing.T) {
 	home := t.TempDir()
@@ -51,5 +55,58 @@ func TestBuildGUIStateReturnsEmptySlicesWhenSignedOut(t *testing.T) {
 	}
 	if state.LastError != "daemon offline" {
 		t.Fatalf("expected last error to be preserved, got %q", state.LastError)
+	}
+}
+
+func TestBuildGUIStateIncludesRemainingNamespaceSlots(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		switch r.URL.Path {
+		case "/api/v1/me":
+			_, _ = w.Write([]byte(`{
+				"id":"user-1",
+				"email":"test@example.com",
+				"name":"Test User",
+				"reservationLimit":3,
+				"accessHostLimit":10
+			}`))
+		case "/api/v1/tunnels":
+			_, _ = w.Write([]byte(`{"tunnels":[]}`))
+		case "/api/v1/namespaces":
+			_, _ = w.Write([]byte(`{"namespaces":[
+				{"reservationId":"one","subdomain":"alpha","publicUrl":"https://alpha.example.com","claims":[],"accessHosts":[]},
+				{"reservationId":"two","subdomain":"beta","publicUrl":"https://beta.example.com","claims":[],"accessHosts":[]}
+			]}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	if err := saveConfig(AgentConfig{
+		ServerOrigin:   server.URL,
+		Token:          "token",
+		DeviceID:       "device-1",
+		DeviceName:     "test-device",
+		DesiredTunnels: []DesiredTunnelConfig{},
+	}); err != nil {
+		t.Fatalf("saveConfig returned error: %v", err)
+	}
+
+	state, err := buildGUIState()
+	if err != nil {
+		t.Fatalf("buildGUIState returned error: %v", err)
+	}
+
+	if state.ReservationLimit != 3 {
+		t.Fatalf("expected reservation limit 3, got %d", state.ReservationLimit)
+	}
+	if state.RemainingNamespaceSlots != 1 {
+		t.Fatalf("expected one remaining namespace slot, got %d", state.RemainingNamespaceSlots)
 	}
 }

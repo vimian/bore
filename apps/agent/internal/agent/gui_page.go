@@ -148,17 +148,24 @@ func renderGUIPage(csrfToken string) string {
       const select = document.getElementById("namespace");
       const previous = select.value;
       const localPort = Number(document.getElementById("local-port").value);
-      const options = [["", "Generate a new namespace"]].concat(
-        availableNamespaces(state, localPort).map((subdomain) => [subdomain, subdomain])
-      );
+      const reusable = availableNamespaces(state, localPort).map((subdomain) => [subdomain, subdomain]);
+      const options = state.remainingNamespaceSlots > 0
+        ? [["", "Generate a new namespace"]].concat(reusable)
+        : reusable;
+
+      if (!options.length) {
+        options.push(["__unavailable", "No namespaces available"]);
+      }
 
       select.replaceChildren(...options.map(([value, label]) => {
         const option = document.createElement("option");
         option.value = value;
         option.textContent = label;
+        option.disabled = value === "__unavailable";
         return option;
       }));
-      select.value = options.some(([value]) => value === previous) ? previous : "";
+      select.value = options.some(([value]) => value === previous) ? previous : options[0][0];
+      select.disabled = options.length === 1 && options[0][0] === "__unavailable";
     }
 
     function renderSummary(state) {
@@ -278,9 +285,14 @@ func renderGUIPage(csrfToken string) string {
     };
     document.getElementById("tunnel-form").onsubmit = (event) => {
       event.preventDefault();
+      const namespace = document.getElementById("namespace").value;
+      if (namespace === "__unavailable") {
+        showAlert("No namespace is available. Stop an active claim or release a namespace before saving.", "error");
+        return;
+      }
       run(() => api("/api/tunnels", {
         localPort: Number(document.getElementById("local-port").value),
-        preferredSubdomain: document.getElementById("namespace").value.trim(),
+        preferredSubdomain: namespace.trim(),
       }), "Tunnel updated.");
     };
 

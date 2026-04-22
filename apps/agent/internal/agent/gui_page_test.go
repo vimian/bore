@@ -18,6 +18,9 @@ func TestRenderGUIPageUsesPlainNumericPortAndNamespaceSelect(t *testing.T) {
 		t.Fatal("expected preferred namespace to render as a select")
 	}
 	if !strings.Contains(page, `"Generate a new namespace"`) {
-		t.Fatal("expected namespace select to include a generate-new option")
+		t.Fatal("expected namespace select logic to include a generate-new option")
+	}
+	if !strings.Contains(page, `state.remainingNamespaceSlots > 0`) {
+		t.Fatal("expected generate-new option to depend on remaining namespace slots")
 	}
 }
