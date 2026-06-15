@@ -14,7 +14,7 @@ For the hosted Bore service, install the native CLI with:
 curl -sL https://bore.dk/install.sh | bash
 ```
 
-The installer puts `bore` in `~/.local/bin` by default.
+The installer puts `bore` in `~/.local/bin` by default and adds that directory to your shell profile when needed.
 Update an installed client later with:
 
 ```bash
