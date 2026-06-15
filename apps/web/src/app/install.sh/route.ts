@@ -88,6 +88,54 @@ Write-Output (Join-Path $env:USERPROFILE '.local\\bin')
 EOF
 }
 
+unix_shell_profile() {
+  local shell_name
+
+  shell_name="$(basename "\${SHELL:-}")"
+  case "$shell_name" in
+    zsh) printf '%s\\n' "$HOME/.zshrc" ;;
+    bash)
+      if [ "$(detect_os)" = "darwin" ]; then
+        printf '%s\\n' "$HOME/.bash_profile"
+      else
+        printf '%s\\n' "$HOME/.bashrc"
+      fi
+      ;;
+    *) printf '%s\\n' "$HOME/.profile" ;;
+  esac
+}
+
+configure_unix_path() {
+  local install_dir="$1"
+  local profile
+
+  case ":$PATH:" in
+    *":$install_dir:"*) return ;;
+  esac
+
+  echo
+  if [ -n "\${BORE_INSTALL_SKIP_PATH_UPDATE:-}" ]; then
+    echo "Add $install_dir to your PATH:"
+    echo "  export PATH=\\"$install_dir:\\$PATH\\""
+    return
+  fi
+
+  profile="$(unix_shell_profile)"
+  mkdir -p "$(dirname "$profile")"
+  touch "$profile"
+
+  if ! grep -Fq "export PATH=\\"$install_dir:\\$PATH\\"" "$profile"; then
+    {
+      printf '\\n# Added by Bore installer\\n'
+      printf 'export PATH="%s:$PATH"\\n' "$install_dir"
+    } >> "$profile"
+    echo "Added $install_dir to PATH in $profile"
+  fi
+
+  echo "Open a new terminal, or run this now:"
+  echo "  export PATH=\\"$install_dir:\\$PATH\\""
+}
+
 install_unix_binary() {
   local install_dir="\${BORE_INSTALL_DIR:-$HOME/.local/bin}"
   local binary_path="$install_dir/bore"
@@ -105,14 +153,7 @@ install_unix_binary() {
 
   echo "Installed bore to $binary_path"
   "$binary_path" version || true
-
-  case ":$PATH:" in
-    *":$install_dir:"*) ;;
-    *)
-      echo
-      echo "Add $install_dir to your PATH if it is not already present."
-      ;;
-  esac
+  configure_unix_path "$install_dir"
 }
 
 install_windows_binary() {
