@@ -44,6 +44,16 @@ type localWebSocket struct {
 	writeLock chan struct{}
 }
 
+var localProxyHTTPClient = &http.Client{
+	Transport: &http.Transport{
+		DisableCompression: true,
+	},
+	Timeout: 30 * time.Second,
+	CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+		return http.ErrUseLastResponse
+	},
+}
+
 func newLocalWebSocket(conn *websocket.Conn) *localWebSocket {
 	lock := make(chan struct{}, 1)
 	lock <- struct{}{}
@@ -157,12 +167,7 @@ func proxyLocalRequest(message proxyRequestMessage) (proxyResponseMessage, error
 		req.Host = headers.host
 	}
 
-	res, err := (&http.Client{
-		Timeout: 30 * time.Second,
-		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
-			return http.ErrUseLastResponse
-		},
-	}).Do(req)
+	res, err := localProxyHTTPClient.Do(req)
 	if err != nil {
 		return proxyResponseMessage{}, err
 	}

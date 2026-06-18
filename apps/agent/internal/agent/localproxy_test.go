@@ -93,6 +93,32 @@ func TestProxyLocalRequestDoesNotFollowRedirects(t *testing.T) {
 	}
 }
 
+func TestProxyLocalRequestDoesNotInjectAcceptEncoding(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Accept-Encoding"); got != "" {
+			t.Fatalf("expected no injected accept-encoding, got %q", got)
+		}
+
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	port := strings.Split(strings.TrimPrefix(server.URL, "http://"), ":")[1]
+	response, err := proxyLocalRequest(proxyRequestMessage{
+		Type:      "proxy_request",
+		RequestID: "req-no-encoding",
+		LocalPort: mustPort(t, port),
+		Method:    http.MethodGet,
+		Path:      "/static/main.js",
+	})
+	if err != nil {
+		t.Fatalf("proxyLocalRequest returned error: %v", err)
+	}
+	if response.Status != http.StatusNoContent {
+		t.Fatalf("expected 204 response, got %d", response.Status)
+	}
+}
+
 func TestBuildLocalWebSocketHeadersStripsHandshakeHeaders(t *testing.T) {
 	headers := buildLocalWebSocketHeaders(stringListMap{
 		"connection":               {"Upgrade"},
