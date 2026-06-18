@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { mkdir, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -45,6 +46,7 @@ function buildNamespaceConfig(
 
 export class TraefikManager {
   static readonly MANAGED_FILE_PREFIX = "managed-";
+  #reconcileQueue: Promise<void> = Promise.resolve();
 
   constructor(
     private readonly dynamicConfigDir: string,
@@ -67,6 +69,17 @@ export class TraefikManager {
   }
 
   async reconcile(state: PersistedState): Promise<void> {
+    const snapshot = structuredClone(state);
+    const run = this.#reconcileQueue.then(
+      () => this.writeConfig(snapshot),
+      () => this.writeConfig(snapshot),
+    );
+
+    this.#reconcileQueue = run.catch(() => undefined);
+    await run;
+  }
+
+  private async writeConfig(state: PersistedState): Promise<void> {
     await mkdir(this.dynamicConfigDir, { recursive: true });
 
     const desired = new Map<string, string>();
@@ -98,9 +111,16 @@ export class TraefikManager {
 
     for (const [filename, contents] of desired) {
       const target = join(this.dynamicConfigDir, filename);
-      const temp = `${target}.tmp`;
-      await writeFile(temp, contents, "utf8");
-      await rename(temp, target);
+      const temp = `${target}.${process.pid}.${Date.now()}.${randomUUID()}.tmp`;
+
+      try {
+        await writeFile(temp, contents, "utf8");
+        await rename(temp, target);
+      } catch (error) {
+        await rm(temp, { force: true });
+        throw error;
+      }
+
       existing.delete(filename);
     }
 
