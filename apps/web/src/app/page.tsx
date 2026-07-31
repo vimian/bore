@@ -7,32 +7,37 @@ import { formatCompactNumber, getGitHubStars } from "@/lib/github";
 import { getCurrentUser } from "@/lib/session";
 
 const siteOrigin = getSiteOrigin();
-const pageTitle = "HTTPS For Localhost, Loopback Hostnames, Persistent URLs, And Child Subdomains";
+const pageTitle =
+  "Bore — Expose Localhost to the Internet | Free Ngrok Alternative";
 const pageDescription =
-  "Expose localhost over HTTPS with Bore. Get real HTTPS URLs for local websites, APIs, Node.js, React, Next.js, and Vite dev servers, plus loopback hostnames like l.bore.dk, local.bore.dk, localhost.bore.dk, stable webhook callbacks, OAuth flows, and child-subdomain workflows like api.bo.bore.dk.";
+  "Expose Next.js, Vite, and local APIs at a public HTTPS URL with Bore, a free ngrok alternative. Test webhooks and mobile apps with persistent subdomains.";
 
 export const metadata: Metadata = {
-  title: pageTitle,
+  title: {
+    absolute: pageTitle,
+  },
   description: pageDescription,
   keywords: [
-    "l.bore.dk",
-    "local.bore.dk",
-    "localhost.bore.dk",
-    "127.0.0.1 custom domain",
-    "localhost subdomains",
-    "https localhost",
-    "child subdomain localhost",
+    "expose localhost to internet",
+    "expose localhost to public URL",
+    "free ngrok alternative",
+    "Next.js tunnel",
+    "Vite tunnel",
+    "public URL for local API",
+    "webhook testing localhost",
+    "mobile testing localhost",
+    "persistent HTTPS subdomains",
   ],
   alternates: {
     canonical: "/",
   },
   openGraph: {
-    title: `Bore | ${pageTitle}`,
+    title: pageTitle,
     description: pageDescription,
     url: siteOrigin,
   },
   twitter: {
-    title: `Bore | ${pageTitle}`,
+    title: pageTitle,
     description: pageDescription,
   },
 };
@@ -44,21 +49,26 @@ export default async function Home() {
     "@graph": [
       {
         "@type": "WebSite",
+        "@id": `${siteOrigin}/#website`,
         name: "Bore",
         url: siteOrigin,
         description: pageDescription,
+        inLanguage: "en",
       },
       {
         "@type": "SoftwareApplication",
+        "@id": `${siteOrigin}/#software`,
         name: "Bore",
         applicationCategory: "DeveloperApplication",
+        applicationSubCategory: "Development tool",
         operatingSystem: "Windows, macOS, Linux",
-        softwareVersion: "latest",
         description: pageDescription,
         url: siteOrigin,
         downloadUrl: `${siteOrigin}/install.sh`,
         installUrl: `${siteOrigin}/install.sh`,
         codeRepository: "https://github.com/vimian/bore",
+        license: "https://github.com/vimian/bore/blob/master/LICENSE",
+        isAccessibleForFree: true,
         creator: {
           "@type": "Person",
           name: "Casper Fenger Jensen",
@@ -69,15 +79,14 @@ export default async function Home() {
           priceCurrency: "USD",
         },
         featureList: [
-          "HTTPS for localhost development",
-          "Loopback hostnames for local development",
-          "l.bore.dk, local.bore.dk, and localhost.bore.dk hostnames for 127.0.0.1",
-          "HTTPS for local websites, APIs, and common dev frameworks",
-          "Stable webhook and OAuth callback URLs",
-          "Persistent subdomains",
+          "Expose localhost through a public HTTPS URL",
+          "Public HTTPS URLs for Next.js, Vite, and local APIs",
+          "Webhook and OAuth callback testing on localhost",
+          "Mobile testing against local development servers",
+          "Persistent HTTPS subdomains",
           "Managed namespaces and child subdomains",
-          "Web control plane",
-          "Open source client and server",
+          "Live tunnel telemetry in a web control plane",
+          "Publicly reviewable source under BUSL-1.1",
         ],
       },
     ],

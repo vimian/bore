@@ -67,7 +67,7 @@ export default function GuidesIndexPage() {
           <p className="mt-5 text-base leading-7 text-zinc-400">
             These pages are built around real developer tasks, not just framework names. The
             library now covers local websites, local APIs, React, Next.js, Vite, Node.js, webhook
-            testing, OAuth callbacks, secure cookies, mobile-device testing, Bore's child-host
+            testing, OAuth callbacks, secure cookies, mobile-device testing, Bore&apos;s child-host
             HTTPS routing, and Bore loopback hostnames for 127.0.0.1 development.
           </p>
         </header>

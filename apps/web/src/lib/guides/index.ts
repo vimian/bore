@@ -33,12 +33,17 @@ export const GUIDE_GROUPS: Array<{
   },
 ];
 
+const SUPERSEDED_GUIDE_SLUGS = new Set([
+  "https-nextjs-dev",
+  "webhook-testing-localhost",
+]);
+
 export const GUIDES: Guide[] = [
   ...BASICS_GUIDES,
   ...FRAMEWORK_GUIDES,
   ...WORKFLOW_GUIDES,
   ...FEATURE_GUIDES,
-];
+].filter((guide) => !SUPERSEDED_GUIDE_SLUGS.has(guide.slug));
 
 export function getGuide(slug: string) {
   return GUIDES.find((guide) => guide.slug === slug);
