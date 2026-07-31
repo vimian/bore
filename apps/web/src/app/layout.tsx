@@ -24,9 +24,10 @@ const mono = Geist_Mono({
 const siteOrigin = getSiteOrigin();
 const siteURL = new URL(siteOrigin);
 const siteName = "Bore";
-const defaultTitle = "Bore | HTTPS Tunnels For Localhost, APIs, And Dev Environments";
+const defaultTitle =
+  "Bore — Expose Localhost to the Internet | Free Ngrok Alternative";
 const defaultDescription =
-  "Bore is an open source tunneling platform for exposing localhost over HTTPS with managed namespaces, child subdomains, persistent tunnels, and a web control plane.";
+  "Expose Next.js, Vite, and local APIs at a public HTTPS URL with Bore, a free ngrok alternative. Test webhooks and mobile apps with persistent subdomains.";
 
 export const metadata: Metadata = {
   metadataBase: siteURL,
@@ -51,30 +52,21 @@ export const metadata: Metadata = {
   description: defaultDescription,
   keywords: [
     "bore",
-    "https localhost",
-    "https local website",
-    "ssl local development",
-    "secure tunneling",
-    "localhost tunnel",
-    "open source tunnel",
+    "expose localhost to internet",
+    "expose localhost to public URL",
+    "free ngrok alternative",
     "ngrok alternative",
-    "dev tunnel",
-    "https nextjs dev",
-    "https node dev",
-    "vite https local",
-    "react localhost https",
-    "webhook localhost https",
-    "oauth callback localhost https",
-    "secure cookies local dev",
-    "webhook testing",
-    "persistent tunnels",
-    "custom subdomains",
-    "child subdomain https",
+    "localhost tunnel",
+    "source available tunnel",
+    "Next.js tunnel",
+    "Vite tunnel",
+    "public URL for local API",
+    "webhook testing localhost",
+    "test webhooks locally",
+    "mobile testing localhost",
+    "persistent HTTPS subdomains",
     "developer tools",
   ],
-  alternates: {
-    canonical: "/",
-  },
   category: "developer tools",
   authors: [{ name: "Casper Fenger Jensen" }],
   creator: "Casper Fenger Jensen",

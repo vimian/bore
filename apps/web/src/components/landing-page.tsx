@@ -4,7 +4,7 @@ import {
   ArrowUpRight,
   BadgeCheck,
   BookOpenText,
-  Database,
+  Globe2,
   Github,
   Layers3,
   Linkedin,
@@ -18,6 +18,8 @@ import { InstallCommandCopy } from "@/components/install-command-copy";
 
 const GITHUB_REPO_URL = "https://github.com/vimian/bore";
 const GITHUB_DOCS_URL = "https://github.com/vimian/bore/tree/main/docs";
+const DEVELOPER_DOCS_URL = "/docs/nextjs-localhost";
+const SOURCE_LICENSE_URL = `${GITHUB_REPO_URL}/blob/master/LICENSE`;
 const FOUNDER_LINKEDIN_URL = "https://www.linkedin.com/in/casper-fenger-jensen";
 const INSTALL_COMMAND = "curl -sL https://bore.dk/install.sh | bash";
 
@@ -86,23 +88,23 @@ const productCards = [
     ),
   },
   {
-    eyebrow: "SQLite Auth",
-    title: "Local-first authentication that stays fast under load.",
+    eyebrow: "Public HTTPS",
+    title: "Expose any localhost port at a public HTTPS URL.",
     copy:
-      "User records, session issuance, and namespace limits live close to the control plane for predictable access checks.",
+      "Point Bore at a Next.js, Vite, or local API port and give browsers, mobile devices, and external services a URL they can reach.",
     className: "lg:row-span-2",
-    icon: Database,
+    icon: Globe2,
     content: (
       <div className="mt-6 rounded-[1.5rem] border border-zinc-800 bg-zinc-950/90 p-5">
         <div className="flex items-center gap-3 text-zinc-300">
-          <Database className="h-5 w-5" />
-          <span className="text-sm font-medium">Fast path auth flow</span>
+          <Globe2 className="h-5 w-5" />
+          <span className="text-sm font-medium">One tunnel, real workflows</span>
         </div>
         <div className="mt-5 space-y-3">
           {[
-            "Email + password verification",
-            "Per-user reservation and child-host limits",
-            "Session cookies issued directly from Bore",
+            "Share a local Next.js or Vite server",
+            "Receive Stripe or GitHub webhooks",
+            "Open the same dev build on a mobile device",
           ].map((line) => (
             <div
               key={line}
@@ -117,9 +119,9 @@ const productCards = [
   },
   {
     eyebrow: "Persistence",
-    title: "Always-on tunnels with daemon-level continuity.",
+    title: "Keep the same HTTPS subdomain between test sessions.",
     copy:
-      "Persistent connections keep routing stable even when teams pause and resume local work throughout the day.",
+      "Persistent tunnels keep callback URLs and shared development links stable when you pause and resume local work.",
     className: "",
     icon: TimerReset,
     content: (
@@ -172,14 +174,15 @@ const footerColumns = [
       { label: "Features", href: "#features" },
       { label: "Guides", href: "/guides" },
       { label: "Dashboard", href: "/dashboard" },
-      { label: "Open Source", href: "#open-source" },
+      { label: "Source Available", href: "#source-available" },
     ],
   },
   {
     title: "Resources",
     links: [
       { label: "HTTPS Guides", href: "/guides" },
-      { label: "Docs", href: GITHUB_DOCS_URL, external: true },
+      { label: "Developer Docs", href: DEVELOPER_DOCS_URL },
+      { label: "GitHub Docs", href: GITHUB_DOCS_URL, external: true },
       { label: "Source Code", href: GITHUB_REPO_URL, external: true },
       {
         label: "Health",
@@ -191,7 +194,7 @@ const footerColumns = [
   {
     title: "Community",
     links: [
-      { label: "Open Source", href: GITHUB_REPO_URL, external: true },
+      { label: "Source Code", href: GITHUB_REPO_URL, external: true },
       { label: "Sign In", href: "/login" },
       { label: "GitHub", href: GITHUB_REPO_URL, external: true },
     ],
@@ -205,11 +208,11 @@ const footerColumns = [
         external: true,
       },
       {
-        label: "MIT License",
-        href: `${GITHUB_REPO_URL}/blob/main/LICENSE`,
+        label: "BUSL-1.1 License",
+        href: SOURCE_LICENSE_URL,
         external: true,
       },
-      { label: "About Bore", href: "#open-source" },
+      { label: "About Bore", href: "#source-available" },
     ],
   },
 ];
@@ -246,14 +249,9 @@ export function LandingPage({
             <Link href="/guides" className="transition hover:text-white">
               Guides
             </Link>
-            <a
-              href={GITHUB_DOCS_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="transition hover:text-white"
-            >
+            <Link href={DEVELOPER_DOCS_URL} className="transition hover:text-white">
               Docs
-            </a>
+            </Link>
           </nav>
 
           <div className="flex items-center gap-3">
@@ -283,22 +281,20 @@ export function LandingPage({
         <div className="space-y-8">
           <div className="inline-flex items-center gap-2 rounded-full border border-zinc-800 bg-zinc-900/70 px-4 py-2 text-xs font-semibold uppercase tracking-[0.28em] text-zinc-300 backdrop-blur">
             <Sparkles className="h-4 w-4" />
-            Authenticated control plane
+            Free, source-available ngrok alternative
           </div>
 
           <div className="space-y-6">
             <h1 className="max-w-4xl font-[family-name:var(--font-display)] text-5xl leading-[0.9] text-transparent sm:text-6xl lg:text-7xl">
               <span className="bg-gradient-to-b from-white via-zinc-100 to-zinc-500 bg-clip-text">
-                Secure Tunneling. Zero Friction.
+                Expose localhost to the internet.
               </span>
             </h1>
             <p className="max-w-2xl text-lg leading-8 text-zinc-400">
-              The authenticated control plane for exposing local services over
-              HTTPS. Managed namespaces, child hosts, live SQLite-backed
-              telemetry, persistent tunnels, and loopback hostnames like
-              `l.bore.dk`, `local.bore.dk`, and `localhost.bore.dk` for
-              localhost, APIs, React, Node.js, Next.js, Vite, webhooks, and
-              OAuth-heavy development.
+              Give your Next.js, Vite, or local API server a public HTTPS URL
+              with one Bore tunnel. Use persistent subdomains to test webhooks,
+              OAuth callbacks, and mobile apps without changing your local
+              development server.
             </p>
           </div>
 
@@ -324,47 +320,47 @@ export function LandingPage({
           <InstallCommandCopy command={INSTALL_COMMAND} />
 
           <p className="max-w-3xl text-sm leading-7 text-zinc-500">
-            Popular guides:{" "}
+            Start with:{" "}
             <Link
-              href="/guides/https-local-website"
+              href="/docs/nextjs-localhost"
               className="text-zinc-300 transition hover:text-white"
             >
-              HTTPS local website
+              share a local Next.js server
             </Link>
             ,{" "}
             <Link
-              href="/guides/local-api-https"
+              href="/guides/https-vite-local"
               className="text-zinc-300 transition hover:text-white"
             >
-              local API HTTPS
+              expose a Vite dev server
             </Link>
             ,{" "}
             <Link
-              href="/guides/webhook-testing-localhost"
+              href="/docs/webhook-testing"
               className="text-zinc-300 transition hover:text-white"
             >
               webhook testing on localhost
             </Link>
             ,{" "}
             <Link
-              href="/guides/oauth-callback-localhost-https"
+              href="/guides/mobile-device-testing-https"
               className="text-zinc-300 transition hover:text-white"
             >
-              OAuth callbacks on HTTPS
+              test a local app on mobile
             </Link>
             ,{" "}
             <Link
-              href="/guides/child-subdomain-https"
+              href="/guides/local-api-https"
               className="text-zinc-300 transition hover:text-white"
             >
-              HTTPS child subdomains
+              expose a local API
             </Link>
-            ,{" "}
+            , or{" "}
             <Link
-              href="/guides/localhost-like-loopback-hostnames"
+              href="/docs/vs-ngrok"
               className="text-zinc-300 transition hover:text-white"
             >
-              localhost-like loopback hostnames
+              compare Bore with ngrok
             </Link>
             .
           </p>
@@ -469,15 +465,15 @@ export function LandingPage({
       >
         <div className="mb-10 max-w-3xl">
           <p className="text-sm font-semibold uppercase tracking-[0.28em] text-zinc-500">
-            Product Intelligence
+            Developer Workflows
           </p>
           <h2 className="mt-4 font-[family-name:var(--font-display)] text-4xl text-white sm:text-5xl">
-            The surface area developers actually need.
+            One public URL for the local work you already do.
           </h2>
           <p className="mt-4 text-lg leading-8 text-zinc-400">
-            Bore combines authenticated access, namespace management, and
-            telemetry in one control plane instead of scattering state across
-            tunnel commands and ad-hoc scripts.
+            Share framework dev servers, receive webhook callbacks, connect
+            mobile clients to local APIs, and manage persistent HTTPS
+            subdomains from one control plane.
           </p>
         </div>
 
@@ -512,7 +508,7 @@ export function LandingPage({
       </section>
 
       <section
-        id="open-source"
+        id="source-available"
         className="relative mx-auto max-w-7xl px-6 pb-24 lg:pb-32"
       >
         <div className="grid gap-4 lg:grid-cols-[1.3fr_0.7fr]">
@@ -520,21 +516,22 @@ export function LandingPage({
             <div className="flex flex-wrap items-center gap-3">
               <span className="inline-flex items-center gap-2 rounded-full border border-zinc-800 bg-zinc-950/80 px-4 py-2 text-xs font-semibold uppercase tracking-[0.26em] text-zinc-300">
                 <Github className="h-4 w-4" />
-                Open Source
+                Source Available
               </span>
               <span className="inline-flex items-center gap-2 rounded-full border border-zinc-800 bg-zinc-950/80 px-4 py-2 text-xs font-semibold uppercase tracking-[0.26em] text-zinc-400">
                 <BadgeCheck className="h-4 w-4" />
-                Community built
+                Publicly reviewable
               </span>
             </div>
 
             <h2 className="mt-6 font-[family-name:var(--font-display)] text-4xl text-white">
-              Fully Open Source. Built for the community.
+              Source available. Built in public.
             </h2>
             <p className="mt-4 max-w-2xl text-lg leading-8 text-zinc-400">
               Bore ships the web control plane, the local agent, and deployment
-              primitives in the open. Audit the stack, file issues, or fork the
-              product without reverse-engineering a black box.
+              primitives in a public repository. Review the stack, file issues,
+              or fork and modify the code within the terms of the BUSL-1.1
+              license.
             </p>
 
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
@@ -544,7 +541,7 @@ export function LandingPage({
                 rel="noopener noreferrer"
                 className="inline-flex items-center justify-center gap-2 rounded-full bg-white px-6 py-3 text-sm font-semibold text-zinc-950 transition hover:bg-zinc-200"
               >
-                View repository
+                View source
                 <ArrowUpRight className="h-4 w-4" />
               </a>
               <a
@@ -631,11 +628,11 @@ export function LandingPage({
                 BORE
               </Link>
               <p className="mt-3 max-w-md text-sm leading-7 text-zinc-400">
-                HTTPS tunneling for localhost with managed namespaces, child
-                hosts, live telemetry, and a clear control plane.
+                Expose localhost at a public HTTPS URL for framework previews,
+                API clients, webhook testing, and mobile development.
               </p>
             </div>
-            <p>&copy; 2026 Bore.dk. Open Source under MIT License.</p>
+            <p>&copy; 2026 Bore.dk. Source available under BUSL-1.1.</p>
             <div className="flex items-center gap-4">
               <a
                 href={FOUNDER_LINKEDIN_URL}
