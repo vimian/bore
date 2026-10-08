@@ -28,6 +28,7 @@ import type {
   UserRecord,
 } from "./types.js";
 import { buildDashboardOverview, type ReservationView } from "./state-model.js";
+import type { TrafficEntry } from "./traffic-batcher.js";
 
 interface DeviceConnectionState {
   connectedAt: string;
@@ -224,7 +225,7 @@ export class TunnelCoordinator {
   }
 
   findActiveTunnelByHostname(host: string): TunnelView | undefined {
-    const snapshot = this.store.snapshot();
+    const snapshot = this.store.routingSnapshot?.() ?? this.store.snapshot();
     const target = this.resolveHostnameTarget(snapshot, host);
 
     if (!target) {
@@ -296,53 +297,28 @@ export class TunnelCoordinator {
   }
 
   async recordHostnameRequest(host: string, ipAddress: string): Promise<void> {
-    const normalizedIpAddress = this.normalizeIpAddress(ipAddress);
+    const now = new Date().toISOString();
+    return this.recordHostnameRequests([{ host, ipAddress, count: 1, firstAt: now, lastAt: now }]);
+  }
 
-    if (!normalizedIpAddress) {
-      return;
-    }
-
+  async recordHostnameRequests(entries: TrafficEntry[]): Promise<void> {
     await this.store.update((state) => {
-      const target = this.resolveHostnameTarget(state, host);
-
-      if (!target) {
-        return;
-      }
-
-      const now = new Date().toISOString();
-
-      if (target.kind === "direct") {
-        const reservation = state.reservations[target.reservationId];
-
-        if (!reservation) {
-          return;
+      for (const entry of entries) {
+        const ip = this.normalizeIpAddress(entry.ipAddress);
+        const target = this.resolveHostnameTarget(state, entry.host);
+        if (!ip || !target) continue;
+        if (target.kind === "direct") {
+          const reservation = state.reservations[target.reservationId];
+          if (!reservation) continue;
+          reservation.directRequestStats = this.incrementRequestStats(reservation.directRequestStats, ip, entry);
+        } else if (target.accessHostId) {
+          const host = state.accessHosts[target.accessHostId];
+          if (!host) continue;
+          host.lastSeenAt = entry.lastAt;
+          host.updatedAt = entry.lastAt;
+          host.requestStats = this.incrementRequestStats(host.requestStats, ip, entry);
         }
-
-        reservation.directRequestStats = this.incrementRequestStats(
-          reservation.directRequestStats,
-          normalizedIpAddress,
-          now,
-        );
-        return;
       }
-
-      if (!target.accessHostId) {
-        return;
-      }
-
-      const accessHost = state.accessHosts[target.accessHostId];
-
-      if (!accessHost) {
-        return;
-      }
-
-      accessHost.lastSeenAt = now;
-      accessHost.updatedAt = now;
-      accessHost.requestStats = this.incrementRequestStats(
-        accessHost.requestStats,
-        normalizedIpAddress,
-        now,
-      );
     });
   }
 
@@ -845,24 +821,19 @@ export class TunnelCoordinator {
   private incrementRequestStats(
     stats: RequestStatsRecord | undefined,
     ipAddress: string,
-    now: string,
+    entry: TrafficEntry,
   ): RequestStatsRecord {
-    const existing = stats?.ipAddresses[ipAddress];
-
-    return {
-      requestCount: (stats?.requestCount ?? 0) + 1,
-      firstRequestAt: stats?.firstRequestAt ?? now,
-      lastRequestAt: now,
-      ipAddresses: {
-        ...(stats?.ipAddresses ?? {}),
-        [ipAddress]: {
-          ipAddress,
-          requestCount: (existing?.requestCount ?? 0) + 1,
-          firstSeenAt: existing?.firstSeenAt ?? now,
-          lastSeenAt: now,
-        },
-      },
+    const result = stats ?? { requestCount: 0, firstRequestAt: entry.firstAt, lastRequestAt: entry.lastAt, ipAddresses: {} };
+    result.requestCount += entry.count;
+    result.lastRequestAt = entry.lastAt;
+    const existing = result.ipAddresses[ipAddress];
+    result.ipAddresses[ipAddress] = {
+      ipAddress,
+      requestCount: (existing?.requestCount ?? 0) + entry.count,
+      firstSeenAt: existing?.firstSeenAt ?? entry.firstAt,
+      lastSeenAt: entry.lastAt,
     };
+    return result;
   }
 
   private resolveHostnameTarget(

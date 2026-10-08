@@ -401,8 +401,14 @@ func (d *daemon) readRelayLoop(socket *relaySocket) {
 }
 
 func handleProxyRequest(socket *relaySocket, message proxyRequestMessage) {
+	started := time.Now()
 	response, err := proxyLocalRequest(message)
 	if err != nil {
+		errorCode := "local_request_failed"
+		var netErr net.Error
+		if errors.As(err, &netErr) && netErr.Timeout() {
+			errorCode = "local_timeout"
+		}
 		errorBody, _ := json.Marshal(map[string]string{
 			"error": err.Error(),
 		})
@@ -413,7 +419,9 @@ func handleProxyRequest(socket *relaySocket, message proxyRequestMessage) {
 			Headers: map[string][]string{
 				"Content-Type": {"application/json; charset=utf-8"},
 			},
-			Body: base64.StdEncoding.EncodeToString(errorBody),
+			Body:            base64.StdEncoding.EncodeToString(errorBody),
+			LocalDurationMS: float64(time.Since(started).Microseconds()) / 1000,
+			ErrorCode:       errorCode,
 		})
 		return
 	}

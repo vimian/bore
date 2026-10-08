@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import {
   readSnapshot,
+  readStateRevision,
   upsertUser,
   writeSnapshot,
 } from "./bore-db.js";
@@ -23,6 +24,7 @@ export { DEFAULT_ACCESS_HOST_LIMIT };
 export interface ControlPlaneStore {
   init(): Promise<void>;
   snapshot(): PersistedState;
+  routingSnapshot?(): PersistedState;
   update<T>(updater: (state: PersistedState) => T | Promise<T>): Promise<T>;
   upsertUser(input: {
     id?: string;
@@ -77,6 +79,8 @@ export function setDeviceConnection(
 }
 
 export class SQLiteStore implements ControlPlaneStore {
+  #updates: Promise<unknown> = Promise.resolve();
+  #routing?: { revision: string; state: PersistedState };
   constructor(private readonly dbPath?: string) {}
 
   async init(): Promise<void> {
@@ -91,11 +95,29 @@ export class SQLiteStore implements ControlPlaneStore {
     return structuredClone(readSnapshot(this.dbPath));
   }
 
+  routingSnapshot(): PersistedState {
+    const revision = readStateRevision(this.dbPath);
+    if (this.#routing?.revision !== revision) {
+      const state = readSnapshot(this.dbPath);
+      state.users = {};
+      state.pendingCliAuth = {};
+      for (const reservation of Object.values(state.reservations)) delete reservation.directRequestStats;
+      for (const host of Object.values(state.accessHosts)) delete host.requestStats;
+      this.#routing = { revision, state };
+    }
+    return structuredClone(this.#routing.state);
+  }
+
   async update<T>(updater: (state: PersistedState) => T | Promise<T>): Promise<T> {
-    const state = this.snapshot();
-    const result = await updater(state);
-    writeSnapshot(state, this.dbPath);
-    return result;
+    const update = this.#updates.then(async () => {
+      const state = this.snapshot();
+      const result = await updater(state);
+      writeSnapshot(state, this.dbPath);
+      this.#routing = undefined;
+      return result;
+    });
+    this.#updates = update.catch(() => undefined);
+    return update;
   }
 
   async upsertUser(input: {

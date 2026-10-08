@@ -245,6 +245,14 @@ export function readSnapshot(dbPath?: string): PersistedState {
   };
 }
 
+export function readStateRevision(dbPath?: string): string {
+  const db = getDatabase(dbPath);
+  const row = db.prepare("SELECT updated_at FROM app_state WHERE key = ?")
+    .get(CONTROL_PLANE_STATE_KEY) as { updated_at: string } | undefined;
+  const version = db.prepare("PRAGMA data_version").get() as { data_version: number };
+  return `${row?.updated_at ?? ""}:${version.data_version}`;
+}
+
 export function writeSnapshot(state: PersistedState, dbPath?: string): PersistedState {
   const db = getDatabase(dbPath);
 

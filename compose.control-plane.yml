@@ -23,6 +23,7 @@ services:
 
   control-plane:
     container_name: bore-control-plane
+    init: true
     build:
       context: .
       dockerfile: docker/control-plane.Dockerfile
@@ -35,6 +36,34 @@ services:
     volumes:
       - bore-control-plane-data:/data
       - ./traefik/dynamic:/runtime/traefik-dynamic
+
+  monitoring:
+    container_name: bore-monitoring
+    image: bore-control-plane-monitoring
+    build:
+      context: .
+      dockerfile: docker/control-plane.Dockerfile
+    command: ["node", "apps/control-plane/dist/src/monitoring/runner.js"]
+    healthcheck:
+      disable: true
+    init: true
+    restart: unless-stopped
+    environment:
+      BORE_DB_PATH: /data/bore.sqlite
+      BORE_PUBLIC_DOMAIN: ${BORE_PUBLIC_DOMAIN}
+    user: "0:0"
+    mem_limit: 256m
+    cpus: 0.5
+    depends_on:
+      - control-plane
+    volumes:
+      - bore-control-plane-data:/data
+      - /proc:/host/proc:ro
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   web:
     container_name: bore-web

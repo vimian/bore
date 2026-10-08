@@ -28,5 +28,5 @@ RUN useradd --create-home --uid 10001 bore \
   && chown -R bore:bore /data /app
 USER bore
 EXPOSE 8787
-HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 CMD node -e "fetch('http://127.0.0.1:' + (process.env.PORT || '8787') + '/health').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 CMD node -e "fetch('http://127.0.0.1:' + (process.env.PORT || '8787') + '/health', {signal: AbortSignal.timeout(2000)}).then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"
 CMD ["node", "apps/control-plane/dist/src/index.js"]

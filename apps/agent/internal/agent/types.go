@@ -163,11 +163,13 @@ type proxyRequestMessage struct {
 }
 
 type proxyResponseMessage struct {
-	Type      string              `json:"type"`
-	RequestID string              `json:"requestId"`
-	Status    int                 `json:"status"`
-	Headers   map[string][]string `json:"headers"`
-	Body      string              `json:"body"`
+	Type            string              `json:"type"`
+	RequestID       string              `json:"requestId"`
+	Status          int                 `json:"status"`
+	Headers         map[string][]string `json:"headers"`
+	Body            string              `json:"body"`
+	LocalDurationMS float64             `json:"localDurationMs,omitempty"`
+	ErrorCode       string              `json:"errorCode,omitempty"`
 }
 
 type websocketConnectMessage struct {

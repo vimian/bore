@@ -154,6 +154,8 @@ export interface RelayResponseMessage {
   status: number;
   headers: Record<string, string[]>;
   body: string;
+  localDurationMs?: number;
+  errorCode?: string;
 }
 
 export interface WebSocketConnectMessage {

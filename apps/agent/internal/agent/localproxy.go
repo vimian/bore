@@ -132,6 +132,7 @@ func buildLocalWebSocketHeaders(headers map[string][]string) proxyHeaders {
 }
 
 func proxyLocalRequest(message proxyRequestMessage) (proxyResponseMessage, error) {
+	started := time.Now()
 	target := &url.URL{
 		Scheme: "http",
 		Host:   fmt.Sprintf("127.0.0.1:%d", message.LocalPort),
@@ -189,11 +190,12 @@ func proxyLocalRequest(message proxyRequestMessage) (proxyResponseMessage, error
 	}
 
 	return proxyResponseMessage{
-		Type:      "proxy_response",
-		RequestID: message.RequestID,
-		Status:    res.StatusCode,
-		Headers:   responseHeaders,
-		Body:      base64.StdEncoding.EncodeToString(responseBody),
+		Type:            "proxy_response",
+		RequestID:       message.RequestID,
+		Status:          res.StatusCode,
+		Headers:         responseHeaders,
+		Body:            base64.StdEncoding.EncodeToString(responseBody),
+		LocalDurationMS: float64(time.Since(started).Microseconds()) / 1000,
 	}, nil
 }
 

@@ -14,7 +14,7 @@ import {
   shouldHandleControlPlaneHttpRoute,
   shouldHandleControlPlaneWebSocketRoute,
 } from "./control-plane-routing.js";
-import { toErrorResponse } from "./errors.js";
+import { badRequest, toErrorResponse } from "./errors.js";
 import { getClientIp, getForwardedProto, sanitizeForwardHeaders } from "./forward-headers.js";
 import { diffAddedHostnames, listDevicePublicHostnames } from "./prewarm-hosts.js";
 import { SessionTokenService } from "./session-tokens.js";
@@ -34,6 +34,8 @@ import type {
   WebSocketDataMessage,
 } from "./types.js";
 import { TlsManager } from "./tls-manager.js";
+import { TunnelMonitoring } from "./monitoring/recorder.js";
+import { TrafficBatcher } from "./traffic-batcher.js";
 
 interface PendingRelay {
   deviceId: string;
@@ -181,8 +183,11 @@ async function readJson<T>(request: IncomingMessage): Promise<T> {
 
 async function readBody(request: IncomingMessage): Promise<Buffer> {
   const chunks: Buffer[] = [];
+  let size = 0;
 
   for await (const chunk of request) {
+    size += chunk.length;
+    if (size > 16 * 1024 * 1024) throw badRequest("request_body_too_large", "Tunnel request bodies must be at most 16 MiB");
     chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
   }
 
@@ -278,6 +283,20 @@ export async function startServer(): Promise<void> {
   const pendingWebSockets = new Map<string, PendingWebSocketConnection>();
   const activeWebSockets = new Map<string, ActiveTunnelWebSocket>();
   const acceptedProtocols = new WeakMap<IncomingMessage, string>();
+  const deviceRtts = new WeakMap<WebSocket, number>();
+  const monitoring = new TunnelMonitoring(config.dbPath);
+  const traffic = new TrafficBatcher((entries) => coordinator.recordHostnameRequests(entries));
+  const trafficTimer = setInterval(() => { void traffic.flush(); }, 5000);
+  trafficTimer.unref();
+  monitoring.start(() => ({
+    pendingRelays: pendingRelays.size,
+    pendingWebSockets: pendingWebSockets.size,
+    activeWebSockets: activeWebSockets.size,
+    deviceSockets: wss.clients.size,
+    bufferedBytes: [...wss.clients].reduce((sum, socket) => sum + socket.bufferedAmount, 0),
+    trafficDropped: traffic.dropped,
+    maxDeviceRttMs: Math.max(0, ...[...wss.clients].map((socket) => deviceRtts.get(socket) ?? 0)),
+  }));
   const wss = new WebSocketServer({ noServer: true });
   const publicWss = new WebSocketServer({
     noServer: true,
@@ -310,6 +329,7 @@ export async function startServer(): Promise<void> {
   await traefikManager?.reconcile(store.snapshot());
 
   const requestHandler = async (request: IncomingMessage, response: ServerResponse) => {
+    const trace = monitoring.http(normalizeRequestHost(request.headers.host) ?? "unknown", response);
     try {
     const method = request.method ?? "GET";
     const url = new URL(request.url ?? "/", config.serverOrigin);
@@ -317,6 +337,7 @@ export async function startServer(): Promise<void> {
 
     if (shouldHandleControlPlaneHttpRoute(request.headers.host, url.pathname, config.publicDomain)) {
       if (method === "GET" && url.pathname === "/health") {
+        trace.routed();
         respondJson(response, 200, { ok: true });
         return;
       }
@@ -600,12 +621,14 @@ export async function startServer(): Promise<void> {
     const clientIp = getClientIp(request);
 
     if (clientIp) {
-      await coordinator.recordHostnameRequest(host, clientIp);
+      traffic.record(host, clientIp);
     }
 
     const tunnel = coordinator.findActiveTunnelByHostname(host);
+    trace.routed();
 
     if (!tunnel || !coordinator.hasLiveConnection(tunnel.deviceId)) {
+      trace.outcome = "not_connected";
       respondJson(response, 502, { error: "Tunnel is not connected" });
       return;
     }
@@ -613,7 +636,14 @@ export async function startServer(): Promise<void> {
     const socket = sockets.get(tunnel.deviceId);
 
     if (!socket || socket.readyState !== socket.OPEN) {
+      trace.outcome = "transport_unavailable";
       respondJson(response, 502, { error: "Tunnel transport is unavailable" });
+      return;
+    }
+
+    if (pendingRelays.size >= 128 || socket.bufferedAmount > 32 * 1024 * 1024) {
+      trace.outcome = "overloaded";
+      respondJson(response, 503, { error: "Tunnel relay is busy; retry shortly" });
       return;
     }
 
@@ -632,7 +662,19 @@ export async function startServer(): Promise<void> {
         timeout,
       });
     });
+    void relayPromise.catch(() => undefined);
+    const cancelRelay = (message: string) => {
+      const pending = pendingRelays.get(requestId);
+      if (!pending) return;
+      clearTimeout(pending.timeout);
+      pendingRelays.delete(requestId);
+      pending.reject(new Error(message));
+    };
+    const onClose = () => { if (!response.writableFinished) cancelRelay("Client disconnected"); };
+    response.once("close", onClose);
+    trace.sent();
 
+    try {
     socket.send(
       JSON.stringify({
         type: "proxy_request",
@@ -648,24 +690,37 @@ export async function startServer(): Promise<void> {
           clientIp,
         ),
         body: body.toString("base64"),
-      }),
+      }), (error) => { if (error) cancelRelay("Tunnel send failed"); },
     );
 
-    try {
       const relayResponse = await relayPromise;
+      trace.received();
       response.statusCode = relayResponse.status;
 
       for (const [key, value] of Object.entries(relayResponse.headers)) {
         response.setHeader(key, value);
       }
 
-      response.end(Buffer.from(relayResponse.body, "base64"));
+      const responseBody = Buffer.from(relayResponse.body, "base64");
+      trace.bytes = responseBody.length;
+      trace.outcome = relayResponse.status >= 500 ? "upstream_error" : "completed";
+      if (["local_timeout", "local_request_failed"].includes(relayResponse.errorCode ?? "")) {
+        trace.outcome = relayResponse.errorCode!;
+      }
+      trace.localMs = relayResponse.localDurationMs;
+      response.end(responseBody);
     } catch (error) {
+      cancelRelay("Tunnel request failed");
+      trace.outcome = error instanceof Error && error.message.includes("timed out") ? "relay_timeout" : "relay_error";
+      if (response.destroyed) return;
       respondJson(response, 502, {
         error: error instanceof Error ? error.message : "Tunnel request failed",
       });
+    } finally {
+      response.off("close", onClose);
     }
     } catch (error) {
+      trace.outcome = "handler_error";
       const { status, body } = toErrorResponse(error);
 
       if (status >= 500) {
@@ -681,6 +736,7 @@ export async function startServer(): Promise<void> {
   const server = tlsManager
     ? createHttpsServer(tlsManager.getHttpsOptions(), requestHandler)
     : createServer(requestHandler);
+  server.once("close", () => { clearInterval(trafficTimer); monitoring.close(); });
 
   wss.on("connection", (socket, request) => {
     const url = new URL(request.url ?? "/", config.serverOrigin);
@@ -701,6 +757,21 @@ export async function startServer(): Promise<void> {
     }
 
     sockets.attach(deviceId, socket);
+    socket.on("error", () => socket.terminate());
+    let alive = true;
+    let pingAt = 0;
+    socket.on("pong", () => {
+      alive = true;
+      if (pingAt) deviceRtts.set(socket, performance.now() - pingAt);
+    });
+    const heartbeat = setInterval(() => {
+      if (!alive) { socket.terminate(); return; }
+      alive = false;
+      pingAt = performance.now();
+      socket.ping();
+    }, 30_000);
+    heartbeat.unref();
+    socket.once("close", () => clearInterval(heartbeat));
     void coordinator.setDeviceConnection(deviceId, true).catch((error) => {
       console.error("Unable to persist device connection", error);
     });
@@ -722,7 +793,7 @@ export async function startServer(): Promise<void> {
       if (message.type === "proxy_response") {
         const pendingRelay = pendingRelays.get(message.requestId);
 
-        if (!pendingRelay) {
+        if (!pendingRelay || pendingRelay.deviceId !== deviceId) {
           return;
         }
 
@@ -735,7 +806,7 @@ export async function startServer(): Promise<void> {
       if (message.type === "websocket_connected") {
         const pendingWebSocket = pendingWebSockets.get(message.connectionId);
 
-        if (!pendingWebSocket) {
+        if (!pendingWebSocket || pendingWebSocket.deviceId !== deviceId) {
           return;
         }
 
@@ -748,7 +819,7 @@ export async function startServer(): Promise<void> {
       if (message.type === "websocket_connect_error") {
         const pendingWebSocket = pendingWebSockets.get(message.connectionId);
 
-        if (!pendingWebSocket) {
+        if (!pendingWebSocket || pendingWebSocket.deviceId !== deviceId) {
           return;
         }
 
@@ -761,7 +832,7 @@ export async function startServer(): Promise<void> {
       if (message.type === "websocket_data") {
         const activeWebSocket = activeWebSockets.get(message.connectionId);
 
-        if (!activeWebSocket || activeWebSocket.socket.readyState !== activeWebSocket.socket.OPEN) {
+        if (!activeWebSocket || activeWebSocket.deviceId !== deviceId || activeWebSocket.socket.readyState !== activeWebSocket.socket.OPEN) {
           return;
         }
 
@@ -775,7 +846,7 @@ export async function startServer(): Promise<void> {
       if (message.type === "websocket_close") {
         const activeWebSocket = activeWebSockets.get(message.connectionId);
 
-        if (!activeWebSocket) {
+        if (!activeWebSocket || activeWebSocket.deviceId !== deviceId) {
           return;
         }
 
@@ -831,17 +902,23 @@ export async function startServer(): Promise<void> {
   });
 
   server.on("upgrade", async (request, socket, head) => {
+    const trace = monitoring.trace(normalizeRequestHost(request.headers.host) || "unknown", "websocket");
+    socket.once("close", () => { trace.outcome = "client_aborted"; trace.finish(499); });
     const url = new URL(request.url ?? "/", config.serverOrigin);
     const host = normalizeRequestHost(request.headers.host);
 
     if (shouldHandleControlPlaneWebSocketRoute(request.headers.host, url.pathname, config.publicDomain)) {
       wss.handleUpgrade(request, socket, head, (websocket) => {
+        trace.routed();
+        trace.finish(101);
         wss.emit("connection", websocket, request);
       });
       return;
     }
 
     if (!host || !isKnownPublicHost(host, config.publicDomain)) {
+      trace.outcome = "unknown_host";
+      trace.finish(404);
       rejectUpgrade(socket, 404, "Unknown host");
       return;
     }
@@ -849,12 +926,15 @@ export async function startServer(): Promise<void> {
     const clientIp = getClientIp(request);
 
     if (clientIp) {
-      await coordinator.recordHostnameRequest(host, clientIp);
+      traffic.record(host, clientIp);
     }
 
     const tunnel = coordinator.findActiveTunnelByHostname(host);
+    trace.routed();
 
     if (!tunnel || !coordinator.hasLiveConnection(tunnel.deviceId)) {
+      trace.outcome = "not_connected";
+      trace.finish(502);
       rejectUpgrade(socket, 502, "Tunnel is not connected");
       return;
     }
@@ -862,7 +942,16 @@ export async function startServer(): Promise<void> {
     const relaySocket = sockets.get(tunnel.deviceId);
 
     if (!relaySocket || relaySocket.readyState !== relaySocket.OPEN) {
+      trace.outcome = "transport_unavailable";
+      trace.finish(502);
       rejectUpgrade(socket, 502, "Tunnel transport is unavailable");
+      return;
+    }
+
+    if (pendingWebSockets.size >= 128) {
+      trace.outcome = "overloaded";
+      trace.finish(503);
+      rejectUpgrade(socket, 503, "Tunnel websocket relay is busy");
       return;
     }
 
@@ -882,6 +971,7 @@ export async function startServer(): Promise<void> {
       });
     });
 
+    trace.sent();
     relaySocket.send(
       JSON.stringify({
         type: "websocket_connect",
@@ -903,7 +993,10 @@ export async function startServer(): Promise<void> {
 
     try {
       connected = await connectPromise;
+      trace.received();
     } catch (error) {
+      trace.outcome = "websocket_connect_error";
+      trace.finish(502);
       rejectUpgrade(
         socket,
         502,
@@ -918,6 +1011,7 @@ export async function startServer(): Promise<void> {
 
     try {
       publicWss.handleUpgrade(request, socket, head, (websocket) => {
+        trace.finish(101);
         acceptedProtocols.delete(request);
         activeWebSockets.set(connectionId, {
           deviceId: tunnel.deviceId,
