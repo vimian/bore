@@ -20,3 +20,13 @@ export function authenticateUser(email:string,password:string):Promise<UserRecor
 export function createSession(userId:string):Promise<string>;
 export function deleteSession(token:string):Promise<void>;
 export function getUserBySessionToken(token:string):Promise<UserRecord|null>;
+export interface UsageCounts { httpRequests:number;websocketConnections:number;tcpTlsConnections:null;syntheticRequests:number }
+export interface UsageHost { accessHostId:string|null;host:string;month:UsageCounts;lifetime:UsageCounts }
+export interface UsageNamespace { reservationId:string;namespace:string;month:UsageCounts;lifetime:UsageCounts;hosts:UsageHost[] }
+export interface UserUsage {
+  trackingSince:string|null;timeZone:string;month:string;limitsEnforced:false;
+  protocolSupport:{http:true;websocket:true;tcpTls:false};totals:{month:UsageCounts;lifetime:UsageCounts};
+  namespaces:UsageNamespace[];daily:Array<UsageCounts & {day:string}>;
+}
+export function usageMonth(month?:string):string;
+export function getUserUsage(userId:string,month?:string):Promise<UserUsage>;

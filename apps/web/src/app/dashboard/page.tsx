@@ -4,6 +4,8 @@ import { ArrowLeft, RadioTower } from "lucide-react";
 import { redirect } from "next/navigation";
 
 import { NamespaceDashboard } from "@/components/namespace-dashboard";
+import { UsagePanel } from "@/components/usage-panel";
+import { getUserUsage } from "@bore/database";
 import { SignOutButton } from "@/components/sign-out-button";
 import { getDashboardOverview } from "@/lib/bore-db";
 import { getPublicDomain } from "@/lib/env";
@@ -26,6 +28,7 @@ export default async function DashboardPage() {
   }
 
   const overview = await getDashboardOverview(user.id, getPublicDomain());
+  const usage = await getUserUsage(user.id);
 
   return (
     <main className="relative min-h-screen overflow-hidden px-6 py-8 md:px-10">
@@ -74,6 +77,7 @@ export default async function DashboardPage() {
         </header>
 
         <NamespaceDashboard initialOverview={overview} />
+        <UsagePanel initialUsage={usage} />
       </div>
     </main>
   );

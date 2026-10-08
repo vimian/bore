@@ -144,4 +144,5 @@ See `LICENSE` and `COMMERCIAL-LICENSE.md` for the governing terms.
 - `apps/web` and `apps/control-plane` share PostgreSQL through `DATABASE_URL`. Production Compose injects private-network connection settings and file-based secrets.
 - SQLite is retained only for legacy import and explicit compatibility fixtures. A failed PostgreSQL connection never falls back to SQLite.
 - Production cutover, backups, and recovery are documented in [PostgreSQL operations](docs/postgres-operations.md).
+- Unlimited traffic metering, permanent daily bottleneck summaries, release comparisons, and report commands are documented in [usage and performance history](docs/usage-and-performance-history.md).
 - The web console uses its own session cookie plus control-plane API calls for namespace actions and CLI approval.

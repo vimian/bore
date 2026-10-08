@@ -7,6 +7,7 @@ import { URL } from "node:url";
 import { WebSocketServer, type RawData, type WebSocket } from "ws";
 
 import { getUserById, getUserBySessionToken } from "./bore-db.js";
+import { getUserUsage, usageMonth } from "@bore/database";
 import { loadConfig } from "./config.js";
 import {
   isKnownPublicHost,
@@ -37,6 +38,7 @@ import type {
 import { TlsManager } from "./tls-manager.js";
 import { TunnelMonitoring } from "./monitoring/recorder.js";
 import { TrafficBatcher } from "./traffic-batcher.js";
+import { isProbe, PROBE_HEADER, signProbe } from "./monitoring/probe-auth.js";
 
 interface PendingRelay {
   deviceId: string;
@@ -75,6 +77,7 @@ async function prewarmHostname(host: string): Promise<void> {
         method: "GET",
         redirect: "manual",
         signal: controller.signal,
+        headers: { [PROBE_HEADER]: signProbe(host, "GET") ?? "" },
       });
       clearTimeout(timeout);
       return;
@@ -290,7 +293,8 @@ export async function startServer(): Promise<void> {
   const activeWebSockets = new Map<string, ActiveTunnelWebSocket>();
   const acceptedProtocols = new WeakMap<IncomingMessage, string>();
   const deviceRtts = new WeakMap<WebSocket, number>();
-  const monitoring = new TunnelMonitoring(config.dbPath);
+  const monitoring = new TunnelMonitoring(config.dbPath, { databaseUrl: process.env.DATABASE_URL,
+    platformHost: config.publicDomain, resolveTarget: (host) => coordinator.usageTarget(host) });
   const traffic = new TrafficBatcher((entries) => coordinator.recordHostnameRequests(entries));
   const trafficTimer = setInterval(() => { void traffic.flush(); }, 5000);
   trafficTimer.unref();
@@ -342,16 +346,28 @@ export async function startServer(): Promise<void> {
 
   const requestHandler = async (request: IncomingMessage, response: ServerResponse) => {
     const path = request.url?.split("?")[0] ?? "/";
-    const controlPaths = ["/health", "/api/v1/me", "/api/v1/namespaces", "/api/v1/tunnels", "/api/v1/devices/register", "/api/v1/tunnels/sync"];
+    const controlPaths = ["/health", "/api/v1/usage", "/api/v1/me", "/api/v1/namespaces", "/api/v1/tunnels", "/api/v1/devices/register", "/api/v1/tunnels/sync"];
     const protocol = normalizeRequestHost(request.headers.host) === config.publicDomain && controlPaths.includes(path)
       ? `control:${request.method ?? "GET"}:${path}` : "http";
-    const trace = monitoring.http(normalizeRequestHost(request.headers.host) || "unknown", response, protocol);
+    const requestHost = normalizeRequestHost(request.headers.host) || "unknown";
+    const trace = monitoring.http(requestHost, response, protocol, isProbe(request.headers[PROBE_HEADER], requestHost, request.method ?? "GET"));
     try {
     const method = request.method ?? "GET";
     const url = new URL(request.url ?? "/", config.serverOrigin);
     const host = normalizeRequestHost(request.headers.host);
 
     if (shouldHandleControlPlaneHttpRoute(request.headers.host, url.pathname, config.publicDomain)) {
+      if (method === "GET" && url.pathname === "/api/v1/usage") {
+        const user = await resolveUser(request);
+        if (!user) { respondJson(response, 401, { error: "Unauthorized" }); return; }
+        let month: string;
+        try { month = usageMonth(url.searchParams.get("month") ?? undefined); }
+        catch { respondJson(response, 400, { error: "Month must be YYYY-MM" }); return; }
+        response.setHeader("cache-control", "no-store");
+        if (!usesPostgreSQL) { respondJson(response, 503, { error: "Usage history requires PostgreSQL" }); return; }
+        respondJson(response, 200, await getUserUsage(user.id, month));
+        return;
+      }
       if (method === "GET" && url.pathname === "/health") {
         trace.routed();
         const ready = store.ready?.() ?? true;

@@ -1,5 +1,6 @@
 export { query,transaction,closeDatabase,getPool } from "./client.js";
 export { ensureSchema } from "./schema.js";
+export { getUserUsage,usageMonth } from "./usage.js";
 export { listUsers,getUserById,getUserByEmail,upsertUser,setUserLimit } from "./users.js";
 export { SESSION_COOKIE_NAME,createUserAccount,authenticateUser,createSession,deleteSession,getUserBySessionToken } from "./auth.js";
 import { query } from "./client.js";

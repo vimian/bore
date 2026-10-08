@@ -55,6 +55,7 @@ export class PostgreSQLStore implements ControlPlaneStore {
 
   ready(): boolean { return this.#ready && !this.#closed && Date.now() - this.#lastSuccess < 15_000; }
   snapshot(): PersistedState { return structuredClone(this.#state); }
+  routingRevision(): string { return this.#revision; }
   routingSnapshot(): PersistedState {
     const state = this.snapshot();
     state.pendingCliAuth = {};

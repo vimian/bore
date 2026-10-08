@@ -54,7 +54,7 @@ test("PostgreSQL monitoring adds concurrent aggregates atomically and preserves 
     assert.equal((report.recentProbeFailures as unknown[]).length, 1);
     const devices = report.deviceEvents as Record<string, unknown>[];
     assert.equal(devices.find((row) => row.deviceId === source)?.count, 10);
-    await query("INSERT INTO monitoring.requests SELECT $1,host,protocol,outcome,status,count,total_ms,max_ms,routing_ms,relay_ms,bytes,histogram,local_ms,local_count FROM monitoring.requests WHERE host=$2", [time - 15 * 86400_000, host]);
+    await query("INSERT INTO monitoring.requests (minute,host,protocol,outcome,status,count,total_ms,max_ms,routing_ms,relay_ms,bytes,histogram,local_ms,local_count) SELECT $1,host,protocol,outcome,status,count,total_ms,max_ms,routing_ms,relay_ms,bytes,histogram,local_ms,local_count FROM monitoring.requests WHERE host=$2", [time - 15 * 86400_000, host]);
     await storage.prune();
     assert.equal((await query("SELECT * FROM monitoring.requests WHERE host=$1", [host])).rows.length, 1);
   } finally {
@@ -62,6 +62,7 @@ test("PostgreSQL monitoring adds concurrent aggregates atomically and preserves 
     await query("DELETE FROM monitoring.probes WHERE host=$1", [host]);
     await query("DELETE FROM monitoring.device_events WHERE device_id=$1", [source]);
     await query("DELETE FROM monitoring.samples WHERE source=$1", [source]);
+    await query("DELETE FROM monitoring.daily_metrics WHERE dimensions->>'host'=$1 OR dimensions->>'deviceId'=$2", [host, source]);
     await closeDatabase();
   }
 });

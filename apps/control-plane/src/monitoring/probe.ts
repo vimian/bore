@@ -1,5 +1,6 @@
 import { request } from "node:https";
 import { request as httpRequest } from "node:http";
+import { PROBE_HEADER, signProbe } from "./probe-auth.js";
 
 export interface ProbeResult {
   status: number;
@@ -25,7 +26,9 @@ export function probe(url: string, timeoutMs = 10_000): Promise<ProbeResult> {
     };
     const target = new URL(url);
     const transport = target.protocol === "https:" ? request : httpRequest;
-    const req = transport(target, { method: target.pathname === "/health" ? "GET" : "HEAD", agent: false }, (res) => {
+    const method = target.pathname === "/health" ? "GET" : "HEAD";
+    const signature = signProbe(target.hostname, method);
+    const req = transport(target, { method, agent: false, headers: signature ? { [PROBE_HEADER]: signature } : {} }, (res) => {
       result.status = res.statusCode ?? 0;
       result.firstByteMs = performance.now() - started;
       res.resume();

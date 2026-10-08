@@ -102,10 +102,12 @@ services:
     environment:
       <<: *database-environment
       BORE_DB_APPLICATION_NAME: bore-control-plane
+      BORE_RELEASE_REVISION: ${BORE_RELEASE_REVISION:-unversioned}
+      BORE_MONITORING_PROBE_SECRET_FILE: /run/secrets/bore_monitoring_probe_secret
     depends_on:
       postgres: {condition: service_healthy}
       database-migrate: {condition: service_completed_successfully}
-    secrets: [bore_postgres_password]
+    secrets: [bore_postgres_password, bore_monitoring_probe_secret]
     networks: [default, database]
     expose:
       - "8787"
@@ -131,6 +133,8 @@ services:
     environment:
       <<: *database-environment
       BORE_DB_APPLICATION_NAME: bore-monitoring
+      BORE_RELEASE_REVISION: ${BORE_RELEASE_REVISION:-unversioned}
+      BORE_MONITORING_PROBE_SECRET_FILE: /run/secrets/bore_monitoring_probe_secret
       BORE_DB_POOL_SIZE: "4"
       BORE_PUBLIC_DOMAIN: ${BORE_PUBLIC_DOMAIN}
     user: "0:0"
@@ -139,7 +143,7 @@ services:
     depends_on:
       control-plane: {condition: service_started}
       database-migrate: {condition: service_completed_successfully}
-    secrets: [bore_postgres_password]
+    secrets: [bore_postgres_password, bore_monitoring_probe_secret]
     networks: [default, database]
     volumes:
       - /proc:/host/proc:ro
@@ -186,3 +190,5 @@ secrets:
     file: ./.secrets/postgres-password
   bore_postgres_admin_password:
     file: ./.secrets/postgres-admin-password
+  bore_monitoring_probe_secret:
+    file: ./.secrets/monitoring-probe-secret

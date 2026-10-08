@@ -98,6 +98,14 @@ test("PostgreSQL server awaits session/signed authentication, namespace reads an
     assert.deepEqual((await namespaces.json()).namespaces, []);
   }
   assert.equal((await call("/api/v1/me", "invalid-token")).status, 401);
+  assert.equal((await call("/api/v1/usage", "invalid-token")).status, 401);
+  assert.equal((await call("/api/v1/usage?month=2026-13", token)).status, 400);
+  for (const credential of [token, session]) {
+    const usage = await call("/api/v1/usage?month=2025-01", credential);
+    assert.equal(usage.status, 200);
+    assert.equal(usage.headers["cache-control"], "no-store");
+    assert.equal((await usage.json()).limitsEnforced, false);
+  }
   assert.equal((await call("/health")).status, 200);
   await query(`UPDATE "${schema}".users SET reservation_limit=7 WHERE id=$1`, [userId]);
   assert.equal((await (await call("/api/v1/me", token)).json()).reservationLimit, 7);

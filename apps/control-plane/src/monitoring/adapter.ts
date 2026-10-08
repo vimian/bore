@@ -1,11 +1,12 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { RequestAggregate } from "./storage.js";
 import { PostgresMonitoringStorage } from "./postgres.js";
+import type { UsageRow } from "./usage.js";
 
 export interface DeviceAggregate { minute: number; deviceId: string; event: string; code: number; count: number }
 export interface Sample { time: number; source: string; data: unknown }
 export interface ProbeRow { time: number; host: string; status: number; durationMs: number; error: unknown }
-export interface MonitoringBatch { requests: RequestAggregate[]; devices: DeviceAggregate[]; samples: Sample[] }
+export interface MonitoringBatch { requests: RequestAggregate[]; devices: DeviceAggregate[]; samples: Sample[]; usage?: UsageRow[]; delivery?: { writerId: string; sequence: number } }
 export interface MonitoringStorage {
   readonly db?: DatabaseSync;
   saveBatch(batch: MonitoringBatch): Promise<void>;

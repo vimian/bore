@@ -33,7 +33,6 @@ async function collect(): Promise<void> {
     ...reservations.map((item) => ({ host: `${item.subdomain}.${domain}`, url: `https://${item.subdomain}.${domain}/`, active: activeReservations.has(item.id) })),
     ...Object.values(state.accessHosts).map((item) => ({ host: `${item.hostname}.${domain}`, url: `https://${item.hostname}.${domain}/`, active: activeReservations.has(item.reservationId) }))]
     .filter((target) => /^[a-z0-9.-]+$/.test(target.host)).slice(0, 512);
-  const results: unknown[] = [];
   const queue = [...targets];
   const worker = async () => {
     for (let target = queue.shift(); target; target = queue.shift()) {
@@ -44,7 +43,6 @@ async function collect(): Promise<void> {
       if (target.active && (failed || result.durationMs > 3000)) {
         console.warn(JSON.stringify({ event: "bore_probe_alert", host: target.host, ...details }));
       }
-      results.push({ host: target.host, active: target.active, status: result.status, durationMs: result.durationMs });
     }
   };
   const workers = await Promise.allSettled(Array.from({ length: 4 }, worker));
@@ -52,7 +50,7 @@ async function collect(): Promise<void> {
   if (failure?.status === "rejected") throw failure.reason;
   await monitoring.saveBatch({ requests: [], devices: [], samples: [{ time: Date.now(), source: "host", data: {
     ...hostResources(), stateBytes, namespaces: reservations.length,
-    activeNamespaces: activeReservations.size, deviceConnections: Object.keys(state.deviceConnections).length, probes: results } }] });
+    activeNamespaces: activeReservations.size, deviceConnections: Object.keys(state.deviceConnections).length } }] });
   if (Date.now() - lastPrune > 3600_000) { await monitoring.prune(); lastPrune = Date.now(); }
   console.log(JSON.stringify({ event: "bore_monitoring_cycle", hosts: targets.length, activeNamespaces: activeReservations.size }));
 }

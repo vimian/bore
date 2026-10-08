@@ -87,6 +87,22 @@ test("persists tunnel state to disk", async () => {
   );
 });
 
+test("usage ownership resolves only registered endpoints even when the tunnel is offline", async () => {
+  const { coordinator, user } = await setupCoordinator();
+  await coordinator.syncDeviceTunnels(user, "device-one", [{ localPort: 8080 }]);
+  const assigned = (await coordinator.listUserTunnels(user.id))[0]!.subdomain;
+  await coordinator.reserveAccessHostname(user, assigned, "api");
+  const root = coordinator.usageTarget(`${assigned}.example.com`)!;
+  const child = coordinator.usageTarget(`api.${assigned}.example.com`)!;
+  assert.equal(root.userId, user.id);
+  assert.equal(root.accessHostId, "");
+  assert.equal(child.userId, user.id);
+  assert.equal(child.reservationId, root.reservationId);
+  assert.ok(child.accessHostId);
+  assert.equal(coordinator.usageTarget(`unregistered.${assigned}.example.com`), undefined);
+  assert.equal(coordinator.usageTarget("example.com"), undefined);
+});
+
 test("routes the reserved base subdomain and registered child hosts", async () => {
   const { coordinator, user } = await setupCoordinator();
 

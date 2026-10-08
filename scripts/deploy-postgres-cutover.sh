@@ -5,6 +5,7 @@ test "$(git branch --show-current)" = master
 test "$(git rev-parse HEAD)" = "$(git rev-parse origin/master)"
 git diff --quiet HEAD --
 sh scripts/configure-postgres.sh
+export BORE_RELEASE_REVISION="$(git rev-parse HEAD)"
 compose() { docker compose --progress plain --env-file .env.production -f compose.control-plane.yml "$@"; }
 # Build and initialize PostgreSQL before interrupting existing SQLite writers.
 compose build control-plane monitoring web

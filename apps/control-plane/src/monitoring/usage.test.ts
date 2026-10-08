@@ -1,0 +1,66 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { UsageBuffer } from "./usage.js";
+import { isProbe, signProbe } from "./probe-auth.js";
+import { TunnelMonitoring } from "./recorder.js";
+import type { MonitoringBatch, MonitoringStorage } from "./adapter.js";
+import { sanitizeForwardHeaders } from "../forward-headers.js";
+import { usageMonth } from "@bore/database";
+
+const target = { userId: "owner", reservationId: "namespace-id", accessHostId: "child-id", namespace: "root", host: "child.root.example" };
+test("Usage months reject malformed input and invalid calendar months", () => {
+  assert.equal(usageMonth("2026-10"), "2026-10");
+  for (const value of ["2026-00", "2026-13", "2026-1", "0000-01", "2026-10'", ""]) assert.throws(() => usageMonth(value), RangeError);
+});
+test("Usage buffers count offline attempts, synthetic probes and accepted WS separately", () => {
+  const buffer = new UsageBuffer();
+  buffer.record(target, false, false, "2026-01-31");
+  buffer.record(target, true, false, "2026-01-31");
+  buffer.record(target, false, true, "2026-02-01");
+  buffer.record(undefined, false);
+  const rows = buffer.drain();
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0]?.httpRequests, 1);
+  assert.equal(rows[0]?.syntheticRequests, 1);
+  assert.equal(rows[1]?.websocketConnections, 1);
+  assert.equal(buffer.size, 0);
+});
+test("Probe authentication is host/method/time bound and never forwarded to local applications", () => {
+  const now = Date.now();
+  const signature = signProbe(target.host, "HEAD", now, "test-secret");
+  assert.ok(isProbe(signature, target.host, "HEAD", now, "test-secret"));
+  assert.ok(!isProbe(signature, "other.example", "HEAD", now, "test-secret"));
+  assert.ok(!isProbe(signature, target.host, "GET", now, "test-secret"));
+  assert.ok(!isProbe(signature, target.host, "HEAD", now + 120_001, "test-secret"));
+  assert.ok(!isProbe(signature, target.host, "HEAD", now, "wrong-secret"));
+  assert.ok(!isProbe("true", target.host, "HEAD", now, "test-secret"));
+  assert.equal(sanitizeForwardHeaders({ "x-bore-monitoring-probe": signature }, target.host, "root", "https", "127.0.0.1")["x-bore-monitoring-probe"], undefined);
+});
+test("Recorder freezes admission owner, counts incomplete requests, and retries the same delivery", async () => {
+  const batches: MonitoringBatch[] = [];
+  let fail = true;
+  const storage: MonitoringStorage = { async saveBatch(batch) { batches.push(batch); if (fail) { fail = false; throw new Error("Lost commit reply"); } }, async saveProbe() {}, async prune() {}, async close() {} };
+  let owner = target;
+  const monitoring = new TunnelMonitoring("/unused", { storage, platformHost: "example", resolveTarget: (host) => host === target.host ? owner : undefined });
+  const incomplete = monitoring.trace(target.host, "http");
+  owner = { ...target, userId: "new-owner", reservationId: "new-id" };
+  incomplete.finish(502);
+  incomplete.finish(200);
+  monitoring.trace(target.host, "websocket").finish(101);
+  monitoring.trace(target.host, "websocket").finish(502);
+  monitoring.trace(target.host, "http", true).finish(200);
+  monitoring.trace("example", "websocket").finish(101);
+  monitoring.trace("unregistered.example", "http").finish(404);
+  await assert.rejects(monitoring.flush());
+  await monitoring.flush();
+  assert.equal(batches[0], batches[1]);
+  const rows = batches[1]!.usage!;
+  assert.equal(rows.find((r) => r.userId === "owner")?.httpRequests, 1);
+  assert.equal(rows.find((r) => r.userId === "new-owner")?.httpRequests, 2);
+  assert.equal(rows.find((r) => r.userId === "new-owner")?.websocketConnections, 1);
+  assert.equal(rows.find((r) => r.userId === "new-owner")?.syntheticRequests, 1);
+  assert.equal(rows.length, 2);
+  assert.ok(batches[1]!.requests.some((r) => r.host === "__unattributed__"));
+  assert.ok(batches[1]!.requests.some((r) => r.protocol === "probe:http"));
+  await monitoring.close();
+});

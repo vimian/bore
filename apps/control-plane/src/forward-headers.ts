@@ -2,6 +2,7 @@ import type { IncomingMessage } from "node:http";
 
 const STRIPPED_REQUEST_HEADERS = new Set([
   "connection",
+  "x-bore-monitoring-probe",
   "content-length",
   "forwarded",
   "host",

@@ -64,6 +64,7 @@ function normalizeLocalPort(value: number): number {
 
 export class TunnelCoordinator {
   readonly #connections = new Map<string, DeviceConnectionState>();
+  #usageIndex?: { revision: string; targets: Map<string, { userId: string; reservationId: string; accessHostId: string; namespace: string; host: string }> };
 
   constructor(
     private readonly store: ControlPlaneStore,
@@ -254,6 +255,24 @@ export class TunnelCoordinator {
       ...activeTunnel,
       localPort: target.localPortOverride,
     };
+  }
+
+  usageTarget(host: string) {
+    const revision = this.store.routingRevision?.();
+    if (!this.#usageIndex || revision === undefined || this.#usageIndex.revision !== revision) {
+      const snapshot = this.store.routingSnapshot?.() ?? this.store.snapshot();
+      const targets = new Map<string, { userId: string; reservationId: string; accessHostId: string; namespace: string; host: string }>();
+      const hosts = [...Object.values(snapshot.reservations).map((r) => `${r.subdomain}.${this.publicDomain}`),
+        ...Object.values(snapshot.accessHosts).map((h) => `${h.hostname}.${this.publicDomain}`)];
+      for (const hostname of hosts) {
+        const target = this.resolveHostnameTarget(snapshot, hostname);
+        const reservation = target && snapshot.reservations[target.reservationId];
+        if (reservation && target) targets.set(hostname, Object.freeze({ userId: reservation.userId,
+          reservationId: reservation.id, accessHostId: target.accessHostId ?? "", namespace: reservation.subdomain, host: hostname }));
+      }
+      this.#usageIndex = { revision: revision ?? "", targets };
+    }
+    return this.#usageIndex.targets.get(host.toLowerCase());
   }
 
   hasLiveConnection(deviceId: string): boolean {

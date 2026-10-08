@@ -8,6 +8,7 @@ export interface ControlPlaneStore {
   init(): Promise<void>;
   snapshot(): PersistedState;
   routingSnapshot?(): PersistedState;
+  routingRevision?(): string;
   userSnapshot?(userId: string): PersistedState | Promise<PersistedState>;
   ready?(): boolean;
   close?(): Promise<void>;

@@ -4,7 +4,7 @@ cd "$(dirname "$0")/.."
 test ! -L .secrets
 mkdir -p .secrets
 chmod 700 .secrets
-for name in postgres-password postgres-admin-password; do
+for name in postgres-password postgres-admin-password monitoring-probe-secret; do
   path=".secrets/$name"
   test ! -L "$path"
   if [ ! -e "$path" ]; then
@@ -14,4 +14,4 @@ for name in postgres-password postgres-admin-password; do
   # The host directory is private; mounted secret files must be readable by container users.
   chmod 644 "$path"
 done
-printf 'PostgreSQL secrets are configured; no credentials were printed.\n'
+printf 'Database and monitoring secrets are configured; no credentials were printed.\n'

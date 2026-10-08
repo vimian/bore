@@ -1,4 +1,5 @@
 import { transaction } from "./client.js";
+import { ensureAnalyticsSchema } from "./analytics-schema.js";
 
 export async function ensureSchema() {
   await transaction(async (client) => {
@@ -42,5 +43,6 @@ export async function ensureSchema() {
         '{"devices":{},"reservations":{},"accessHosts":{},"deviceTunnels":{},"pendingCliAuth":{},"deviceConnections":{}}',
         to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')) ON CONFLICT DO NOTHING;
     `);
+    await ensureAnalyticsSchema(client);
   });
 }
