@@ -31,6 +31,8 @@ password hashes and salts remain unchanged. Existing cookies and CLI tokens reta
 their IDs, signatures, and expiration times.
 
 Monitoring is in the `monitoring` schema, with the existing fourteen-day retention.
+The probe worker's health check verifies PostgreSQL access and a durable host
+sample within three minutes; this also makes Compose readiness waits portable.
 Reports retain the same SSH command:
 
 ```sh
