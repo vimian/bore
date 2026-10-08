@@ -92,7 +92,7 @@ export class SQLiteStore implements ControlPlaneStore {
   }
 
   snapshot(): PersistedState {
-    return structuredClone(readSnapshot(this.dbPath));
+    return readSnapshot(this.dbPath);
   }
 
   routingSnapshot(): PersistedState {

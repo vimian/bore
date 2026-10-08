@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -74,5 +74,25 @@ test("removes stale managed Traefik config files", async () => {
     await manager.reconcile(state);
 
     assert.deepEqual(await readdir(dir), []);
+  });
+});
+
+test("traffic updates and repeated agent syncs do not rewrite unchanged routing files", async () => {
+  await withTempDir(async (dir) => {
+    const manager = new TraefikManager(dir, "bore-control-plane", "letsencrypt", "example.com");
+    const state = buildState("api.bo");
+    await manager.reconcile(state);
+    const file = join(dir, "managed-bo.yml");
+    const initial = await stat(file);
+    state.reservations["reservation-1"]!.directRequestStats = {
+      requestCount: 100, firstRequestAt: "now", lastRequestAt: "now", ipAddresses: {},
+    };
+    await Promise.all(Array.from({ length: 100 }, () => manager.reconcile(state)));
+    const after = await stat(file);
+    assert.equal(after.ino, initial.ino);
+    assert.equal(after.mtimeMs, initial.mtimeMs);
+    const restarted = new TraefikManager(dir, "bore-control-plane", "letsencrypt", "example.com");
+    await restarted.reconcile(state);
+    assert.equal((await stat(file)).ino, initial.ino);
   });
 });

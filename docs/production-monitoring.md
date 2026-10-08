@@ -90,6 +90,13 @@ other. This does not provide transactional concurrency across separate
 processes performing snapshot writes; account administration should still
 verify persistence after updates.
 
+Authentication reads the user row directly instead of loading all traffic
+history. Fresh database snapshots need no additional deep clone, and snapshot
+writes avoid an unused reload. Traefik reconciliation retains only the latest
+requested routing configuration, omits traffic statistics, and skips unchanged
+configuration files. Frequent agent syncs therefore cannot build a queue of
+full traffic snapshots waiting for filesystem writes.
+
 Pending HTTP relays and WebSocket handshakes are capped at 128. HTTP request
 bodies are capped at 16 MiB, and HTTP relays reject a transport queue over
 32 MiB. Overload returns 503. Aborted requests release pending slots. Device

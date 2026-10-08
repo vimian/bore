@@ -201,7 +201,7 @@ export class TunnelCoordinator {
   }
 
   async listUserTunnels(userId: string): Promise<TunnelView[]> {
-    return this.buildTunnelViews(this.store.snapshot(), userId);
+    return this.buildTunnelViews(this.store.routingSnapshot?.() ?? this.store.snapshot(), userId);
   }
 
   listUserNamespaces(user: UserRecord): ReservationView[] {
@@ -262,7 +262,7 @@ export class TunnelCoordinator {
   listReservedSubdomains(): string[] {
     return [
       ...new Set(
-        Object.values(this.store.snapshot().reservations).map((reservation) => reservation.subdomain),
+        Object.values((this.store.routingSnapshot?.() ?? this.store.snapshot()).reservations).map((reservation) => reservation.subdomain),
       ),
     ].sort();
   }
@@ -270,7 +270,7 @@ export class TunnelCoordinator {
   listAccessHosts(): string[] {
     return [
       ...new Set(
-        Object.values(this.store.snapshot().accessHosts).map((accessHost) => accessHost.hostname),
+        Object.values((this.store.routingSnapshot?.() ?? this.store.snapshot()).accessHosts).map((accessHost) => accessHost.hostname),
       ),
     ].sort();
   }
@@ -619,7 +619,7 @@ export class TunnelCoordinator {
 
   listNamespaceHostnames(subdomainInput: string): string[] {
     const subdomain = normalizeReservedSubdomain(subdomainInput);
-    const snapshot = this.store.snapshot();
+    const snapshot = this.store.routingSnapshot?.() ?? this.store.snapshot();
     const reservation = Object.values(snapshot.reservations).find(
       (candidate) => candidate.subdomain === subdomain,
     );
@@ -637,7 +637,7 @@ export class TunnelCoordinator {
   }
 
   private buildSyncResponse(userId: string, deviceId: string): SyncResponse {
-    const snapshot = this.store.snapshot();
+    const snapshot = this.store.routingSnapshot?.() ?? this.store.snapshot();
 
     return {
       deviceId,

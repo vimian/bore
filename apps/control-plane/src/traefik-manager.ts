@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readdir, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import type { ControlPlaneConfig } from "./config.js";
@@ -46,7 +46,9 @@ function buildNamespaceConfig(
 
 export class TraefikManager {
   static readonly MANAGED_FILE_PREFIX = "managed-";
-  #reconcileQueue: Promise<void> = Promise.resolve();
+  #reconcileQueue?: Promise<void>;
+  #pending?: Map<string, string>;
+  #appliedSignature?: string;
 
   constructor(
     private readonly dynamicConfigDir: string,
@@ -69,19 +71,6 @@ export class TraefikManager {
   }
 
   async reconcile(state: PersistedState): Promise<void> {
-    const snapshot = structuredClone(state);
-    const run = this.#reconcileQueue.then(
-      () => this.writeConfig(snapshot),
-      () => this.writeConfig(snapshot),
-    );
-
-    this.#reconcileQueue = run.catch(() => undefined);
-    await run;
-  }
-
-  private async writeConfig(state: PersistedState): Promise<void> {
-    await mkdir(this.dynamicConfigDir, { recursive: true });
-
     const desired = new Map<string, string>();
 
     for (const reservation of Object.values(state.reservations)) {
@@ -102,6 +91,29 @@ export class TraefikManager {
       );
     }
 
+    this.#pending = desired;
+    if (!this.#reconcileQueue) {
+      this.#reconcileQueue = Promise.resolve().then(async () => {
+        try {
+          while (this.#pending) {
+            const next = this.#pending;
+            this.#pending = undefined;
+            const signature = JSON.stringify([...next].sort(([a], [b]) => a.localeCompare(b)));
+            if (signature === this.#appliedSignature) continue;
+            await this.writeConfig(next);
+            this.#appliedSignature = signature;
+          }
+        } finally {
+          this.#reconcileQueue = undefined;
+        }
+      });
+    }
+    await this.#reconcileQueue;
+  }
+
+  private async writeConfig(desired: Map<string, string>): Promise<void> {
+    await mkdir(this.dynamicConfigDir, { recursive: true });
+
     const existing = new Set(
       (await readdir(this.dynamicConfigDir)).filter(
         (entry) =>
@@ -111,6 +123,12 @@ export class TraefikManager {
 
     for (const [filename, contents] of desired) {
       const target = join(this.dynamicConfigDir, filename);
+      existing.delete(filename);
+      try {
+        if (await readFile(target, "utf8") === contents) continue;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      }
       const temp = `${target}.${process.pid}.${Date.now()}.${randomUUID()}.tmp`;
 
       try {
@@ -120,8 +138,6 @@ export class TraefikManager {
         await rm(temp, { force: true });
         throw error;
       }
-
-      existing.delete(filename);
     }
 
     for (const filename of existing) {

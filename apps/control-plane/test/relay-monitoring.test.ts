@@ -43,8 +43,9 @@ test("relays concurrent requests, cleans up aborted relays, and persists classif
   let output = "";
   child.stderr.on("data", (data) => { output += data; });
   let socket: WebSocket | undefined;
-  const get = (host: string, path = "/") => new Promise<number>((resolve, reject) => {
-    const req = request({ host: "127.0.0.1", port, path, headers: { host }, timeout: 5000 }, (res) => {
+  const get = (host: string, path = "/", token?: string) => new Promise<number>((resolve, reject) => {
+    const headers = token ? { host, authorization: `Bearer ${token}` } : { host };
+    const req = request({ host: "127.0.0.1", port, path, headers, timeout: 5000 }, (res) => {
       res.resume(); res.once("end", () => resolve(res.statusCode ?? 0));
     });
     req.once("error", reject);
@@ -68,6 +69,8 @@ test("relays concurrent requests, cleans up aborted relays, and persists classif
     await new Promise((resolve) => setTimeout(resolve, 50));
     const responses = await Promise.all(Array.from({ length: 80 }, () => get("eva.example.com")));
     assert.ok(responses.every((status) => status === 200), JSON.stringify(responses));
+    const authenticated = await Promise.all(Array.from({ length: 80 }, () => get("example.com", "/api/v1/me", token)));
+    assert.ok(authenticated.every((status) => status === 200));
     assert.equal(await get("offline.example.com"), 502);
     const abort = request({ host: "127.0.0.1", port, path: "/hang", headers: { host: "eva.example.com" } });
     abort.on("error", () => {}); abort.end();

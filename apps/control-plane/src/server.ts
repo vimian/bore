@@ -6,7 +6,7 @@ import { URL } from "node:url";
 
 import { WebSocketServer, type RawData, type WebSocket } from "ws";
 
-import { getUserBySessionToken } from "./bore-db.js";
+import { getUserById, getUserBySessionToken } from "./bore-db.js";
 import { loadConfig } from "./config.js";
 import {
   isKnownPublicHost,
@@ -316,7 +316,7 @@ export async function startServer(): Promise<void> {
       return getUserBySessionToken(token, config.dbPath) ?? undefined;
     }
 
-    return store.snapshot().users[payload.sub];
+    return getUserById(payload.sub, config.dbPath) ?? undefined;
   };
 
   const resolveBrowserUser = async (token: string): Promise<UserRecord | undefined> => {
@@ -326,7 +326,7 @@ export async function startServer(): Promise<void> {
   await Promise.all(
     coordinator.listReservedSubdomains().map((subdomain) => tlsManager?.ensureNamespace(subdomain)),
   );
-  await traefikManager?.reconcile(store.snapshot());
+  await traefikManager?.reconcile(store.routingSnapshot?.() ?? store.snapshot());
 
   const requestHandler = async (request: IncomingMessage, response: ServerResponse) => {
     const trace = monitoring.http(normalizeRequestHost(request.headers.host) ?? "unknown", response);
@@ -460,7 +460,7 @@ export async function startServer(): Promise<void> {
             desiredTunnels: DesiredTunnelInput[];
           }>(request);
           const previousDeviceHostnames = listDevicePublicHostnames(
-            store.snapshot(),
+            store.routingSnapshot?.() ?? store.snapshot(),
             body.deviceId,
             config.publicDomain,
           );
@@ -474,7 +474,7 @@ export async function startServer(): Promise<void> {
               tlsManager?.ensureNamespace(subdomain),
             ),
           );
-          const currentSnapshot = store.snapshot();
+          const currentSnapshot = store.routingSnapshot?.() ?? store.snapshot();
           await traefikManager?.reconcile(currentSnapshot);
           const syncHostnames = diffAddedHostnames(
             previousDeviceHostnames,
@@ -507,7 +507,7 @@ export async function startServer(): Promise<void> {
 
         if (method === "DELETE" && namespacePath) {
           const released = await coordinator.releaseNamespace(user, namespacePath.subdomain);
-          await traefikManager?.reconcile(store.snapshot());
+          await traefikManager?.reconcile(store.routingSnapshot?.() ?? store.snapshot());
           respondJson(response, 200, {
             releasedSubdomain: released.releasedSubdomain,
             removedClaimsCount: released.removedClaimsCount,
@@ -543,7 +543,7 @@ export async function startServer(): Promise<void> {
             accessHostPath.subdomain,
             body.label,
           );
-          await traefikManager?.reconcile(store.snapshot());
+          await traefikManager?.reconcile(store.routingSnapshot?.() ?? store.snapshot());
           await prewarmHostnames([`${accessHost.hostname}.${config.publicDomain}`]);
           const namespace = coordinator.listUserNamespaces(user).find(
             (item) => item.subdomain === accessHostPath.subdomain,
@@ -562,7 +562,7 @@ export async function startServer(): Promise<void> {
             accessHostPath.subdomain,
             body.label,
           );
-          await traefikManager?.reconcile(store.snapshot());
+          await traefikManager?.reconcile(store.routingSnapshot?.() ?? store.snapshot());
           const namespace = coordinator.listUserNamespaces(user).find(
             (item) => item.subdomain === accessHostPath.subdomain,
           );
@@ -749,7 +749,7 @@ export async function startServer(): Promise<void> {
     }
 
     const payload = tokens.verify(token);
-    const device = store.snapshot().devices[deviceId];
+    const device = (store.routingSnapshot?.() ?? store.snapshot()).devices[deviceId];
 
     if (!payload || !device || device.userId !== payload.sub) {
       socket.close(1008, "Unauthorized");

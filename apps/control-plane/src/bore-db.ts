@@ -259,7 +259,7 @@ export function writeSnapshot(state: PersistedState, dbPath?: string): Persisted
   return withTransaction(db, () => {
     persistUsers(db, state.users);
     persistStoredState(db, state);
-    return readSnapshot(dbPath);
+    return state;
   });
 }
 
