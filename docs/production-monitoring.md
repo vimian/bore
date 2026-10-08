@@ -114,6 +114,14 @@ connections are checked with ping/pong every thirty seconds. Docker's init
 process reaps orphaned health-check children, and health checks have an
 explicit two-second fetch deadline.
 
+Updated agents serialize relay connection attempts and ignore stale relay
+teardown, preventing concurrent sync/reconnect calls from replacing each other's
+connections. Local WebSocket handshakes run outside the relay reader, so one slow
+local handshake cannot block unrelated HTTP dispatch or ping/pong handling.
+Pending local handshakes are capped at 128 and canceled when their connection or
+relay closes. Existing installed agents need `bore self-update` and a restart to
+receive these client fixes and supply local-application timing data.
+
 ## Rollback
 
 Redeploy the preceding committed master revision using the usual GitHub release

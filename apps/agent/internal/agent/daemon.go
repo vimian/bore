@@ -18,9 +18,11 @@ import (
 )
 
 type relaySocket struct {
-	url  string
-	conn *websocket.Conn
-	mu   sync.Mutex
+	url    string
+	conn   *websocket.Conn
+	mu     sync.Mutex
+	ctx    context.Context
+	cancel context.CancelFunc
 }
 
 func (socket *relaySocket) sendJSON(value any) error {
@@ -30,18 +32,20 @@ func (socket *relaySocket) sendJSON(value any) error {
 }
 
 type daemon struct {
-	ctx              context.Context
-	cancel           context.CancelFunc
-	controlServer    *http.Server
-	controlPort      int
-	stopping         bool
-	stoppingMu       sync.Mutex
-	relay            *relaySocket
-	relayMu          sync.Mutex
-	reconnectTimer   *time.Timer
-	reconnectTimerMu sync.Mutex
-	localSockets     map[string]*localWebSocket
-	localSocketsMu   sync.RWMutex
+	ctx                 context.Context
+	cancel              context.CancelFunc
+	controlServer       *http.Server
+	controlPort         int
+	stopping            bool
+	stoppingMu          sync.Mutex
+	relay               *relaySocket
+	relayMu             sync.Mutex
+	relayConnectMu      sync.Mutex
+	reconnectTimer      *time.Timer
+	reconnectTimerMu    sync.Mutex
+	localSockets        map[string]*localWebSocket
+	localSocketsMu      sync.RWMutex
+	pendingLocalSockets map[string]context.CancelFunc
 }
 
 func runDaemon() error {
@@ -213,6 +217,8 @@ func (d *daemon) ensureRelayAsync(config AgentConfig) {
 }
 
 func (d *daemon) ensureRelay(config AgentConfig) error {
+	d.relayConnectMu.Lock()
+	defer d.relayConnectMu.Unlock()
 	if config.Token == "" || len(config.DesiredTunnels) == 0 {
 		d.closeRelay()
 		return nil
@@ -242,7 +248,8 @@ func (d *daemon) ensureRelay(config AgentConfig) error {
 		return err
 	}
 
-	socket := &relaySocket{url: wsURL, conn: conn}
+	ctx, cancel := context.WithCancel(d.ctx)
+	socket := &relaySocket{url: wsURL, conn: conn, ctx: ctx, cancel: cancel}
 	d.relayMu.Lock()
 	d.relay = socket
 	d.relayMu.Unlock()
@@ -251,6 +258,7 @@ func (d *daemon) ensureRelay(config AgentConfig) error {
 		Type:     "hello",
 		DeviceID: config.DeviceID,
 	}); err != nil {
+		cancel()
 		conn.Close()
 		d.relayMu.Lock()
 		if d.relay == socket {
@@ -290,12 +298,19 @@ func relayURL(serverOrigin, token, deviceID string) (string, error) {
 
 func (d *daemon) readRelayLoop(socket *relaySocket) {
 	defer func() {
+		if socket.cancel != nil {
+			socket.cancel()
+		}
 		socket.conn.Close()
 		d.relayMu.Lock()
-		if d.relay == socket {
+		current := d.relay == socket
+		if current {
 			d.relay = nil
 		}
 		d.relayMu.Unlock()
+		if !current {
+			return
+		}
 		d.closeLocalSockets()
 		if !d.isStopping() {
 			d.scheduleReconnect()
@@ -335,27 +350,7 @@ func (d *daemon) readRelayLoop(socket *relaySocket) {
 				continue
 			}
 
-			localSocket, protocol, err := connectLocalWebSocket(d.ctx, message)
-			if err != nil {
-				_ = socket.sendJSON(websocketConnectErrorMessage{
-					Type:         "websocket_connect_error",
-					ConnectionID: message.ConnectionID,
-					Message:      err.Error(),
-				})
-				continue
-			}
-
-			d.localSocketsMu.Lock()
-			d.localSockets[message.ConnectionID] = localSocket
-			d.localSocketsMu.Unlock()
-
-			_ = socket.sendJSON(websocketConnectedMessage{
-				Type:         "websocket_connected",
-				ConnectionID: message.ConnectionID,
-				Protocol:     protocol,
-			})
-
-			go d.readLocalWebSocket(socket, message.ConnectionID, localSocket)
+			d.startLocalWebSocket(socket, message)
 		case "websocket_data":
 			var message websocketDataMessage
 			if err := json.Unmarshal(raw, &message); err != nil {
@@ -386,6 +381,7 @@ func (d *daemon) readRelayLoop(socket *relaySocket) {
 			if err := json.Unmarshal(raw, &message); err != nil {
 				continue
 			}
+			d.cancelLocalWebSocketConnect(message.ConnectionID)
 
 			d.localSocketsMu.RLock()
 			localSocket := d.localSockets[message.ConnectionID]
@@ -477,6 +473,10 @@ func (d *daemon) removeLocalSocket(connectionID string) {
 
 func (d *daemon) closeLocalSockets() {
 	d.localSocketsMu.Lock()
+	for id, cancel := range d.pendingLocalSockets {
+		cancel()
+		delete(d.pendingLocalSockets, id)
+	}
 	sockets := d.localSockets
 	d.localSockets = map[string]*localWebSocket{}
 	d.localSocketsMu.Unlock()
@@ -493,6 +493,9 @@ func (d *daemon) closeRelay() {
 	d.relay = nil
 	d.relayMu.Unlock()
 	if socket != nil {
+		if socket.cancel != nil {
+			socket.cancel()
+		}
 		socket.conn.Close()
 	}
 	d.closeLocalSockets()
