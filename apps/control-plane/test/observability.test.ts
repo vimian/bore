@@ -72,8 +72,15 @@ test("metrics aggregate across flushes, count aborted requests once, and prune e
   assert.equal(row.bytes, 100);
   assert.equal(JSON.parse(row.histogram).reduce((sum: number, count: number) => sum + count, 0), 2);
   assert.equal(monitoring.db.prepare("SELECT count FROM requests WHERE status=499").get()?.count, 1);
+  monitoring.deviceEvent("device-one", "connected");
+  monitoring.deviceEvent("device-one", "connected");
+  monitoring.deviceEvent("device-one", "closed", 1006);
+  monitoring.flush();
+  assert.equal(monitoring.db.prepare("SELECT count FROM device_events WHERE event='connected'").get()?.count, 2);
+  assert.equal(monitoring.db.prepare("SELECT code FROM device_events WHERE event='closed'").get()?.code, 1006);
   pruneMonitoring(monitoring.db, Date.now() + 15 * 86400_000);
   assert.equal(monitoring.db.prepare("SELECT COUNT(*) AS count FROM requests").get()?.count, 0);
+  assert.equal(monitoring.db.prepare("SELECT COUNT(*) AS count FROM device_events").get()?.count, 0);
   monitoring.close();
 });
 

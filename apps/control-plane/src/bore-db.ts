@@ -13,6 +13,7 @@ import {
   buildDashboardOverview,
 } from "./state-model.js";
 import type { PersistedState, UserRecord } from "./types.js";
+import { hydrateTrafficHistory, initializeTrafficHistory, persistTrafficHistory, pruneOrphanTraffic, withoutTrafficHistory, recordTrafficUpdates, type TrafficUpdate } from "./traffic-history.js";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const defaultDbPath = resolve(repoRoot, ".data", "bore.sqlite");
@@ -45,6 +46,7 @@ function getDbPath(explicitPath?: string): string {
 
 function ensureSchema(db: DatabaseSync): void {
   db.exec(`
+    PRAGMA busy_timeout = 5000;
     PRAGMA journal_mode = WAL;
     PRAGMA foreign_keys = ON;
     CREATE TABLE IF NOT EXISTS users (
@@ -87,6 +89,7 @@ function ensureSchema(db: DatabaseSync): void {
       ADD COLUMN access_host_limit INTEGER NOT NULL DEFAULT ${DEFAULT_ACCESS_HOST_LIMIT}
     `);
   }
+  initializeTrafficHistory(db);
 }
 
 function getDatabase(explicitPath?: string): DatabaseSync {
@@ -187,14 +190,14 @@ function persistUsers(db: DatabaseSync, users: Record<string, UserRecord>): void
 }
 
 function persistStoredState(db: DatabaseSync, state: PersistedState): void {
-  const payload = JSON.stringify({
+  const payload = JSON.stringify(withoutTrafficHistory({
     devices: state.devices,
     reservations: state.reservations,
     accessHosts: state.accessHosts,
     deviceTunnels: state.deviceTunnels,
     pendingCliAuth: state.pendingCliAuth,
     deviceConnections: state.deviceConnections,
-  } satisfies StoredState);
+  } satisfies StoredState));
   const now = new Date().toISOString();
 
   db.prepare(`
@@ -237,12 +240,28 @@ function verifyPassword(password: string, salt: string, expectedHash: string): b
   return actualHash.length === expected.length && timingSafeEqual(actualHash, expected);
 }
 
-export function readSnapshot(dbPath?: string): PersistedState {
+export function readSnapshot(dbPath?: string, includeTraffic = true): PersistedState {
   const db = getDatabase(dbPath);
-  return {
+  const state = {
     users: loadUsers(db),
     ...loadStoredState(db),
   };
+  if (includeTraffic) hydrateTrafficHistory(db, state);
+  return state;
+}
+
+export function readUserSnapshot(userId: string, dbPath?: string): PersistedState {
+  const state = readSnapshot(dbPath, false);
+  hydrateTrafficHistory(getDatabase(dbPath), state, userId);
+  return state;
+}
+
+export function recordTraffic(entries: TrafficUpdate[], dbPath?: string): void {
+  recordTrafficUpdates(getDatabase(dbPath), entries);
+}
+
+export function clearRequestStats(kind: string, id: string, dbPath?: string): void {
+  getDatabase(dbPath).prepare("DELETE FROM traffic_history WHERE kind=? AND id=?").run(kind, id);
 }
 
 export function readStateRevision(dbPath?: string): string {
@@ -253,12 +272,14 @@ export function readStateRevision(dbPath?: string): string {
   return `${row?.updated_at ?? ""}:${version.data_version}`;
 }
 
-export function writeSnapshot(state: PersistedState, dbPath?: string): PersistedState {
+export function writeSnapshot(state: PersistedState, dbPath?: string, preserveTraffic = false): PersistedState {
   const db = getDatabase(dbPath);
 
   return withTransaction(db, () => {
     persistUsers(db, state.users);
+    persistTrafficHistory(db, state, preserveTraffic);
     persistStoredState(db, state);
+    pruneOrphanTraffic(db);
     return state;
   });
 }

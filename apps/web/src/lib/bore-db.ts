@@ -3,6 +3,7 @@ import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
+import { hydrateUserTraffic } from "./traffic-history";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../../..");
 const defaultDbPath = resolve(repoRoot, ".data", "bore.sqlite");
@@ -260,7 +261,7 @@ function mapUser(row: UserRow): UserRecord {
   };
 }
 
-function readSnapshot(): PersistedState {
+function readSnapshot(userId: string): PersistedState {
   const db = getDatabase();
   const userRows = db
     .prepare(
@@ -273,7 +274,7 @@ function readSnapshot(): PersistedState {
     .get("primary") as { value: string } | undefined;
   const parsed = appStateRow ? (JSON.parse(appStateRow.value) as Partial<PersistedState>) : {};
 
-  return {
+  const state = {
     users,
     devices: parsed.devices ?? {},
     reservations: parsed.reservations ?? {},
@@ -282,6 +283,8 @@ function readSnapshot(): PersistedState {
     pendingCliAuth: parsed.pendingCliAuth ?? {},
     deviceConnections: parsed.deviceConnections ?? {},
   };
+  hydrateUserTraffic(db, state, userId);
+  return state;
 }
 
 function cleanupExpiredSessions(db: DatabaseSync): void {
@@ -498,7 +501,7 @@ export function getDashboardOverview(
   userId: string,
   publicDomain: string,
 ): DashboardOverview {
-  const state = readSnapshot();
+  const state = readSnapshot(userId);
   const user = state.users[userId];
 
   if (!user) {

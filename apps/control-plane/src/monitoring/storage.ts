@@ -38,6 +38,10 @@ export function openMonitoringDb(path: string): DatabaseSync {
       time INTEGER, host TEXT, status INTEGER, duration_ms REAL, error TEXT,
       PRIMARY KEY (time, host)
     );
+    CREATE TABLE IF NOT EXISTS device_events (
+      minute INTEGER, device_id TEXT, event TEXT, code INTEGER, count INTEGER,
+      PRIMARY KEY (minute, device_id, event, code)
+    );
   `);
   return db;
 }
@@ -72,7 +76,7 @@ export function saveSample(db: DatabaseSync, source: string, data: unknown): voi
 
 export function pruneMonitoring(db: DatabaseSync, now = Date.now()): void {
   const cutoff = now - 14 * 86400_000;
-  for (const [table, column] of [["requests", "minute"], ["samples", "time"], ["probes", "time"]]) {
+  for (const [table, column] of [["requests", "minute"], ["samples", "time"], ["probes", "time"], ["device_events", "minute"]]) {
     db.exec(`DELETE FROM ${table} WHERE ${column} < ${cutoff}`);
   }
 }

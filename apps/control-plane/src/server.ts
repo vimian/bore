@@ -329,7 +329,11 @@ export async function startServer(): Promise<void> {
   await traefikManager?.reconcile(store.routingSnapshot?.() ?? store.snapshot());
 
   const requestHandler = async (request: IncomingMessage, response: ServerResponse) => {
-    const trace = monitoring.http(normalizeRequestHost(request.headers.host) ?? "unknown", response);
+    const path = request.url?.split("?")[0] ?? "/";
+    const controlPaths = ["/health", "/api/v1/me", "/api/v1/namespaces", "/api/v1/tunnels", "/api/v1/devices/register", "/api/v1/tunnels/sync"];
+    const protocol = normalizeRequestHost(request.headers.host) === config.publicDomain && controlPaths.includes(path)
+      ? `control:${request.method ?? "GET"}:${path}` : "http";
+    const trace = monitoring.http(normalizeRequestHost(request.headers.host) || "unknown", response, protocol);
     try {
     const method = request.method ?? "GET";
     const url = new URL(request.url ?? "/", config.serverOrigin);
@@ -756,7 +760,9 @@ export async function startServer(): Promise<void> {
       return;
     }
 
+    if (sockets.get(deviceId)) monitoring.deviceEvent(deviceId, "replaced");
     sockets.attach(deviceId, socket);
+    monitoring.deviceEvent(deviceId, "connected");
     socket.on("error", () => socket.terminate());
     let alive = true;
     let pingAt = 0;
@@ -855,7 +861,8 @@ export async function startServer(): Promise<void> {
       }
     });
 
-    socket.on("close", () => {
+    socket.on("close", (code) => {
+      monitoring.deviceEvent(deviceId, "closed", code);
       if (!sockets.detach(deviceId, socket)) {
         return;
       }

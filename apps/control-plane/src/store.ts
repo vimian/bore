@@ -3,6 +3,9 @@ import { randomUUID } from "node:crypto";
 import {
   readSnapshot,
   readStateRevision,
+  readUserSnapshot,
+  recordTraffic,
+  clearRequestStats,
   upsertUser,
   writeSnapshot,
 } from "./bore-db.js";
@@ -17,6 +20,7 @@ import type {
   PersistedState,
   UserRecord,
 } from "./types.js";
+import type { TrafficUpdate } from "./traffic-history.js";
 
 export { DEFAULT_RESERVATION_LIMIT, emptyState };
 export { DEFAULT_ACCESS_HOST_LIMIT };
@@ -25,6 +29,9 @@ export interface ControlPlaneStore {
   init(): Promise<void>;
   snapshot(): PersistedState;
   routingSnapshot?(): PersistedState;
+  userSnapshot?(userId: string): PersistedState;
+  recordTraffic?(entries: TrafficUpdate[]): Promise<void>;
+  clearRequestStats?(kind: string, id: string): Promise<void>;
   update<T>(updater: (state: PersistedState) => T | Promise<T>): Promise<T>;
   upsertUser(input: {
     id?: string;
@@ -84,7 +91,7 @@ export class SQLiteStore implements ControlPlaneStore {
   constructor(private readonly dbPath?: string) {}
 
   async init(): Promise<void> {
-    const snapshot = readSnapshot(this.dbPath);
+    const snapshot = readSnapshot(this.dbPath, false);
 
     if (Object.keys(snapshot.users).length === 0) {
       writeSnapshot(emptyState(), this.dbPath);
@@ -98,7 +105,7 @@ export class SQLiteStore implements ControlPlaneStore {
   routingSnapshot(): PersistedState {
     const revision = readStateRevision(this.dbPath);
     if (this.#routing?.revision !== revision) {
-      const state = readSnapshot(this.dbPath);
+      const state = readSnapshot(this.dbPath, false);
       state.users = {};
       state.pendingCliAuth = {};
       for (const reservation of Object.values(state.reservations)) delete reservation.directRequestStats;
@@ -108,16 +115,28 @@ export class SQLiteStore implements ControlPlaneStore {
     return structuredClone(this.#routing.state);
   }
 
+  userSnapshot(userId: string): PersistedState { return readUserSnapshot(userId, this.dbPath); }
+  async recordTraffic(entries: TrafficUpdate[]): Promise<void> {
+    return this.#enqueue(() => { recordTraffic(entries, this.dbPath); this.#routing = undefined; });
+  }
+  async clearRequestStats(kind: string, id: string): Promise<void> {
+    return this.#enqueue(() => { clearRequestStats(kind, id, this.dbPath); });
+  }
+
+  #enqueue<T>(operation: () => T | Promise<T>): Promise<T> {
+    const update = this.#updates.then(operation);
+    this.#updates = update.catch(() => undefined);
+    return update;
+  }
+
   async update<T>(updater: (state: PersistedState) => T | Promise<T>): Promise<T> {
-    const update = this.#updates.then(async () => {
-      const state = this.snapshot();
+    return this.#enqueue(async () => {
+      const state = readSnapshot(this.dbPath, false);
       const result = await updater(state);
-      writeSnapshot(state, this.dbPath);
+      writeSnapshot(state, this.dbPath, true);
       this.#routing = undefined;
       return result;
     });
-    this.#updates = update.catch(() => undefined);
-    return update;
   }
 
   async upsertUser(input: {

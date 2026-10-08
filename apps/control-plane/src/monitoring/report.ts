@@ -47,5 +47,7 @@ const hostResources = db.prepare(`SELECT MAX(json_extract(data,'$.load1')) AS ma
 const recentProbeFailures = db.prepare(`SELECT host, time, error FROM probes
   WHERE time>=? ${filter} AND (status=0 OR status>=500)
   AND json_extract(error,'$.expectedConnected')=1 ORDER BY time DESC LIMIT 20`).all(...params);
-console.log(JSON.stringify({ hours, host, samples, runtime, hostResources, latencyP95, requests, probes, recentProbeFailures }, null, 2));
+const deviceEvents = db.prepare(`SELECT device_id AS deviceId,event,code,SUM(count) AS count FROM device_events
+  WHERE minute>=? GROUP BY device_id,event,code ORDER BY count DESC`).all(cutoff);
+console.log(JSON.stringify({ hours, host, samples, runtime, hostResources, latencyP95, requests, probes, deviceEvents, recentProbeFailures }, null, 2));
 db.close();

@@ -38,6 +38,7 @@ export class TunnelMonitoring {
   #timer?: NodeJS.Timeout;
   #active = 0;
   #dropped = 0;
+  #devices = new Map<string, { minute: number; deviceId: string; event: string; code: number; count: number }>();
 
   constructor(dbPath: string) {
     this.db = openMonitoringDb(process.env.BORE_MONITORING_DB_PATH ?? join(dirname(dbPath), "monitoring.sqlite"));
@@ -98,8 +99,8 @@ export class TunnelMonitoring {
     });
   }
 
-  http(host: string, response: ServerResponse): RequestTrace {
-    const trace = this.trace(host, "http");
+  http(host: string, response: ServerResponse, protocol = "http"): RequestTrace {
+    const trace = this.trace(host, protocol);
     response.once("finish", () => trace.finish(response.statusCode));
     response.once("close", () => {
       if (!response.writableFinished) { trace.outcome = "client_aborted"; trace.finish(499); }
@@ -110,6 +111,19 @@ export class TunnelMonitoring {
   flush(): void {
     saveRequests(this.db, [...this.#rows.values()]);
     this.#rows.clear();
+    const write = this.db.prepare(`INSERT INTO device_events VALUES (?,?,?,?,?)
+      ON CONFLICT (minute,device_id,event,code) DO UPDATE SET count=count+excluded.count`);
+    for (const entry of this.#devices.values()) write.run(entry.minute, entry.deviceId, entry.event, entry.code, entry.count);
+    this.#devices.clear();
+  }
+
+  deviceEvent(deviceId: string, event: string, code = 0): void {
+    const minute = Math.floor(Date.now() / 60_000) * 60_000;
+    const key = `${minute}:${deviceId}:${event}:${code}`;
+    const prior = this.#devices.get(key);
+    if (prior) prior.count += 1;
+    else if (this.#devices.size < 2048) this.#devices.set(key, { minute, deviceId, event, code, count: 1 });
+    else this.#dropped += 1;
   }
 
   close(): void {

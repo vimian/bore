@@ -19,7 +19,6 @@ import type {
   DeviceRegistrationInput,
   DeviceTunnelRecord,
   PersistedState,
-  RequestStatsRecord,
   SyncResponse,
   SyncTunnelFailure,
   TunnelReservationRecord,
@@ -29,6 +28,7 @@ import type {
 } from "./types.js";
 import { buildDashboardOverview, type ReservationView } from "./state-model.js";
 import type { TrafficEntry } from "./traffic-batcher.js";
+import { incrementTrafficStats, type TrafficUpdate } from "./traffic-history.js";
 
 interface DeviceConnectionState {
   connectedAt: string;
@@ -205,7 +205,7 @@ export class TunnelCoordinator {
   }
 
   listUserNamespaces(user: UserRecord): ReservationView[] {
-    return buildDashboardOverview(this.store.snapshot(), user, this.publicDomain).namespaces;
+    return buildDashboardOverview(this.store.userSnapshot?.(user.id) ?? this.store.snapshot(), user, this.publicDomain).namespaces;
   }
 
   async setDeviceConnection(deviceId: string, connected: boolean): Promise<void> {
@@ -302,6 +302,19 @@ export class TunnelCoordinator {
   }
 
   async recordHostnameRequests(entries: TrafficEntry[]): Promise<void> {
+    if (this.store.recordTraffic) {
+      const state = this.store.routingSnapshot?.() ?? this.store.snapshot();
+      const updates: TrafficUpdate[] = [];
+      for (const entry of entries) {
+        const ipAddress = this.normalizeIpAddress(entry.ipAddress);
+        const target = this.resolveHostnameTarget(state, entry.host);
+        if (!ipAddress || !target) continue;
+        const id = target.kind === "direct" ? target.reservationId : target.accessHostId;
+        if (id) updates.push({ ...entry, ipAddress, id, kind: target.kind });
+      }
+      if (updates.length) await this.store.recordTraffic(updates);
+      return;
+    }
     await this.store.update((state) => {
       for (const entry of entries) {
         const ip = this.normalizeIpAddress(entry.ipAddress);
@@ -310,13 +323,13 @@ export class TunnelCoordinator {
         if (target.kind === "direct") {
           const reservation = state.reservations[target.reservationId];
           if (!reservation) continue;
-          reservation.directRequestStats = this.incrementRequestStats(reservation.directRequestStats, ip, entry);
+          reservation.directRequestStats = incrementTrafficStats(reservation.directRequestStats, ip, entry);
         } else if (target.accessHostId) {
           const host = state.accessHosts[target.accessHostId];
           if (!host) continue;
           host.lastSeenAt = entry.lastAt;
           host.updatedAt = entry.lastAt;
-          host.requestStats = this.incrementRequestStats(host.requestStats, ip, entry);
+          host.requestStats = incrementTrafficStats(host.requestStats, ip, entry);
         }
       }
     });
@@ -576,7 +589,7 @@ export class TunnelCoordinator {
   ): Promise<void> {
     const subdomain = normalizeReservedSubdomain(subdomainInput);
 
-    await this.store.update((state) => {
+    const cleared = await this.store.update((state) => {
       const reservation = Object.values(state.reservations).find(
         (candidate) => candidate.userId === user.id && candidate.subdomain === subdomain,
       );
@@ -594,7 +607,7 @@ export class TunnelCoordinator {
       if (target.kind === "direct") {
         delete reservation.directRequestStats;
         reservation.updatedAt = now;
-        return;
+        return { kind: "direct", id: reservation.id };
       }
 
       const label = normalizeDnsLabel(target.label, "Child host label");
@@ -614,7 +627,9 @@ export class TunnelCoordinator {
 
       delete accessHost.requestStats;
       accessHost.updatedAt = now;
+      return { kind: "child", id: accessHost.id };
     });
+    await this.store.clearRequestStats?.(cleared.kind, cleared.id);
   }
 
   listNamespaceHostnames(subdomainInput: string): string[] {
@@ -816,24 +831,6 @@ export class TunnelCoordinator {
         (subdomain) => !localSubdomains.has(subdomain) && !activeElsewhere.has(subdomain),
       )
       .sort();
-  }
-
-  private incrementRequestStats(
-    stats: RequestStatsRecord | undefined,
-    ipAddress: string,
-    entry: TrafficEntry,
-  ): RequestStatsRecord {
-    const result = stats ?? { requestCount: 0, firstRequestAt: entry.firstAt, lastRequestAt: entry.lastAt, ipAddresses: {} };
-    result.requestCount += entry.count;
-    result.lastRequestAt = entry.lastAt;
-    const existing = result.ipAddresses[ipAddress];
-    result.ipAddresses[ipAddress] = {
-      ipAddress,
-      requestCount: (existing?.requestCount ?? 0) + entry.count,
-      firstSeenAt: existing?.firstSeenAt ?? entry.firstAt,
-      lastSeenAt: entry.lastAt,
-    };
-    return result;
   }
 
   private resolveHostnameTarget(

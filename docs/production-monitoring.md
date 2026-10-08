@@ -13,6 +13,9 @@ counters. Monitoring runs continuously after `docker compose --env-file
   give approximate p95 upper bounds, not exact percentiles.
 - Recorded stages include routing time, relay time, response size, and, when
   supplied by an updated agent, local application duration.
+- Known control API routes have separate fixed labels. Device connection,
+  replacement, and close-code counts are retained per device and minute,
+  so reconnect loops can be distinguished from slow application responses.
 - Every 15 seconds the control plane records memory, CPU, event-loop delay,
   pending relay requests, WebSocket counts, queued bytes, maximum device ping
   round-trip time, and dropped traffic/metric counters.
@@ -97,6 +100,13 @@ requested routing configuration, omits traffic statistics, and skips unchanged
 configuration files. Frequent agent syncs therefore cannot build a queue of
 full traffic snapshots waiting for filesystem writes.
 
+Dashboard history is stored in indexed `traffic_history` rows in the application
+database, rather than inside the shared routing-state JSON. Existing inline
+counters migrate atomically on control-plane startup. Metadata updates preserve
+these rows; released hosts lose their history, and explicit counter resets affect
+only the selected hostname. Dashboard reads hydrate only the current user's
+history. Administrative full snapshots still include all counters.
+
 Pending HTTP relays and WebSocket handshakes are capped at 128. HTTP request
 bodies are capped at 16 MiB, and HTTP relays reject a transport queue over
 32 MiB. Overload returns 503. Aborted requests release pending slots. Device
@@ -108,6 +118,10 @@ explicit two-second fetch deadline.
 
 Redeploy the preceding committed master revision using the usual GitHub release
 flow. The monitoring database can remain in the persistent volume. Application
-identity, namespace ownership, and traffic history require no schema migration
-for this release. Back up the application database before production changes;
-do not restore a full database merely to roll back monitoring code.
+identity and namespace ownership are unchanged. Back up the application database
+before production changes; do not restore a full database merely to roll back
+monitoring code. Versions predating the separate-history migration cannot read
+the new history table. Before deploying one of those versions, stop application
+writers and copy the history rows back into their corresponding fields in
+`app_state` inside a SQLite transaction. Keep the table and current account data;
+never replace current ownership or identities with an old backup.
