@@ -1,4 +1,72 @@
+x-database-environment: &database-environment
+  DATABASE_URL: postgresql://bore@postgres:5432/bore
+  BORE_POSTGRES_PASSWORD_FILE: /run/secrets/bore_postgres_password
+
 services:
+  postgres:
+    container_name: bore-postgres
+    image: &postgres-image postgres:18.6@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: bore_admin
+      POSTGRES_DB: bore
+      POSTGRES_PASSWORD_FILE: /run/secrets/bore_postgres_admin_password
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256 --data-checksums
+    command: ["postgres", "-c", "max_connections=60", "-c", "shared_buffers=128MB"]
+    mem_limit: 768m
+    volumes:
+      - bore-postgres-data:/var/lib/postgresql
+      - ./scripts/init-postgres.sh:/docker-entrypoint-initdb.d/10-bore-role.sh:ro
+    secrets: [bore_postgres_admin_password, bore_postgres_password]
+    networks: [database]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bore_admin -d bore"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+
+  database-migrate:
+    image: bore-control-plane-monitoring
+    command: ["node", "apps/control-plane/dist/src/database/migrate.js"]
+    restart: "no"
+    init: true
+    user: "0:0"
+    environment:
+      <<: *database-environment
+      BORE_DB_PATH: /data/bore.sqlite
+      BORE_MONITORING_DB_PATH: /data/monitoring.sqlite
+    depends_on:
+      postgres: {condition: service_healthy}
+    volumes: [bore-control-plane-data:/data]
+    secrets: [bore_postgres_password]
+    networks: [database]
+
+  database-backup:
+    container_name: bore-database-backup
+    image: *postgres-image
+    command: ["sh", "/scripts/backup-postgres.sh", "loop"]
+    init: true
+    restart: unless-stopped
+    environment:
+      PGHOST: postgres
+      PGUSER: bore
+      PGDATABASE: bore
+    volumes:
+      - bore-postgres-backups:/backups
+      - ./scripts/backup-postgres.sh:/scripts/backup-postgres.sh:ro
+    secrets: [bore_postgres_password]
+    networks: [database]
+    depends_on:
+      postgres: {condition: service_healthy}
+      database-migrate: {condition: service_completed_successfully}
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+
   traefik:
     container_name: bore-traefik
     image: traefik:v3.6.2
@@ -31,6 +99,14 @@ services:
     user: "0:0"
     env_file:
       - .env.production
+    environment:
+      <<: *database-environment
+      BORE_DB_APPLICATION_NAME: bore-control-plane
+    depends_on:
+      postgres: {condition: service_healthy}
+      database-migrate: {condition: service_completed_successfully}
+    secrets: [bore_postgres_password]
+    networks: [default, database]
     expose:
       - "8787"
     volumes:
@@ -49,15 +125,19 @@ services:
     init: true
     restart: unless-stopped
     environment:
-      BORE_DB_PATH: /data/bore.sqlite
+      <<: *database-environment
+      BORE_DB_APPLICATION_NAME: bore-monitoring
+      BORE_DB_POOL_SIZE: "4"
       BORE_PUBLIC_DOMAIN: ${BORE_PUBLIC_DOMAIN}
     user: "0:0"
     mem_limit: 256m
     cpus: 0.5
     depends_on:
-      - control-plane
+      control-plane: {condition: service_started}
+      database-migrate: {condition: service_completed_successfully}
+    secrets: [bore_postgres_password]
+    networks: [default, database]
     volumes:
-      - bore-control-plane-data:/data
       - /proc:/host/proc:ro
     logging:
       driver: json-file
@@ -72,19 +152,33 @@ services:
       dockerfile: docker/web.Dockerfile
     restart: unless-stopped
     environment:
+      <<: *database-environment
+      BORE_DB_APPLICATION_NAME: bore-web
       NODE_ENV: production
       PORT: "3000"
       HOSTNAME: 0.0.0.0
-      BORE_DB_PATH: /data/bore.sqlite
       BORE_PUBLIC_DOMAIN: ${BORE_PUBLIC_DOMAIN}
       BORE_CONTROL_PLANE_ORIGIN: ${BORE_SERVER_ORIGIN}
     expose:
       - "3000"
     depends_on:
-      - control-plane
-    volumes:
-      - bore-control-plane-data:/data
+      control-plane: {condition: service_started}
+      database-migrate: {condition: service_completed_successfully}
+    secrets: [bore_postgres_password]
+    networks: [default, database]
 
 volumes:
+  bore-postgres-data:
+  bore-postgres-backups:
   bore-control-plane-data:
   bore-traefik-acme:
+
+networks:
+  database:
+    internal: true
+
+secrets:
+  bore_postgres_password:
+    file: ./.secrets/postgres-password
+  bore_postgres_admin_password:
+    file: ./.secrets/postgres-admin-password

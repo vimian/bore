@@ -1,13 +1,13 @@
-import { DatabaseSync } from "node:sqlite";
+import { closeDatabase } from "@bore/database";
 import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
-import type { PersistedState } from "../types.js";
 import { probe } from "./probe.js";
-import { openMonitoringDb, saveSample, pruneMonitoring } from "./storage.js";
+import { createMonitoringStorage } from "./adapter.js";
+import { monitoringStateReader } from "./state.js";
 
 const dbPath = process.env.BORE_DB_PATH ?? "/data/bore.sqlite";
-const monitoring = openMonitoringDb(process.env.BORE_MONITORING_DB_PATH ?? join(dirname(dbPath), "monitoring.sqlite"));
-const stateDb = new DatabaseSync(dbPath, { readOnly: true });
+const monitoring = createMonitoringStorage(process.env.BORE_MONITORING_DB_PATH ?? join(dirname(dbPath), "monitoring.sqlite"), process.env.DATABASE_URL);
+const stateReader = monitoringStateReader(dbPath, process.env.DATABASE_URL);
 const domain = process.env.BORE_PUBLIC_DOMAIN ?? "bore.dk";
 let lastPrune = 0;
 
@@ -23,9 +23,7 @@ function hostResources(): Record<string, unknown> {
 }
 
 async function collect(): Promise<void> {
-  const row = stateDb.prepare("SELECT value FROM app_state WHERE key=?").get("primary") as { value: string } | undefined;
-  if (!row) throw new Error("Primary state is missing");
-  const state = JSON.parse(row.value) as PersistedState;
+  const { state, stateBytes } = await stateReader.read();
   const reservations = Object.values(state.reservations);
   const activeReservations = new Set(Object.values(state.deviceTunnels)
     .filter((tunnel) => state.deviceConnections[tunnel.deviceId] &&
@@ -42,27 +40,34 @@ async function collect(): Promise<void> {
       const result = await probe(target.url);
       const failed = result.status === 0 || result.status >= 500;
       const details = { ...result, expectedConnected: target.active };
-      monitoring.prepare("INSERT OR REPLACE INTO probes VALUES (?, ?, ?, ?, ?)")
-        .run(Date.now(), target.host, result.status, result.durationMs, JSON.stringify(details));
+      await monitoring.saveProbe({ time: Date.now(), host: target.host, status: result.status, durationMs: result.durationMs, error: details });
       if (target.active && (failed || result.durationMs > 3000)) {
         console.warn(JSON.stringify({ event: "bore_probe_alert", host: target.host, ...details }));
       }
       results.push({ host: target.host, active: target.active, status: result.status, durationMs: result.durationMs });
     }
   };
-  await Promise.all(Array.from({ length: 4 }, worker));
-  saveSample(monitoring, "host", { ...hostResources(), stateBytes: Buffer.byteLength(row.value), namespaces: reservations.length,
-    activeNamespaces: activeReservations.size, deviceConnections: Object.keys(state.deviceConnections).length, probes: results });
-  if (Date.now() - lastPrune > 3600_000) { pruneMonitoring(monitoring); lastPrune = Date.now(); }
+  const workers = await Promise.allSettled(Array.from({ length: 4 }, worker));
+  const failure = workers.find((result) => result.status === "rejected");
+  if (failure?.status === "rejected") throw failure.reason;
+  await monitoring.saveBatch({ requests: [], devices: [], samples: [{ time: Date.now(), source: "host", data: {
+    ...hostResources(), stateBytes, namespaces: reservations.length,
+    activeNamespaces: activeReservations.size, deviceConnections: Object.keys(state.deviceConnections).length, probes: results } }] });
+  if (Date.now() - lastPrune > 3600_000) { await monitoring.prune(); lastPrune = Date.now(); }
   console.log(JSON.stringify({ event: "bore_monitoring_cycle", hosts: targets.length, activeNamespaces: activeReservations.size }));
 }
 
 let stopping = false;
-for (const signal of ["SIGTERM", "SIGINT"]) process.on(signal, () => { stopping = true; });
+let wake: (() => void) | undefined;
+for (const signal of ["SIGTERM", "SIGINT"]) process.on(signal, () => { stopping = true; wake?.(); });
 while (!stopping) {
   const started = Date.now();
   try { await collect(); } catch (error) { console.error("Monitoring cycle failed", error); }
-  if (!stopping) await new Promise((resolve) => setTimeout(resolve, Math.max(1000, 60_000 - (Date.now() - started))));
+  if (!stopping) await new Promise<void>((resolve) => {
+    const timer = setTimeout(() => { wake = undefined; resolve(); }, Math.max(1000, 60_000 - (Date.now() - started)));
+    wake = () => { clearTimeout(timer); wake = undefined; resolve(); };
+  });
 }
-stateDb.close();
-monitoring.close();
+stateReader.close();
+await monitoring.close();
+if (process.env.DATABASE_URL) await closeDatabase();

@@ -3,7 +3,7 @@
 `bore` is an authenticated tunneling system split into an installable agent, a control plane, and a web console:
 
 - `apps/agent`: the `bore` CLI plus a background daemon that reconnects tunnels on boot.
-- `apps/control-plane`: SQLite-backed auth, device/tunnel coordination, the HTTP relay path, and Traefik automation.
+- `apps/control-plane`: PostgreSQL-backed auth, device/tunnel coordination, the HTTP relay path, and Traefik automation.
 - `apps/web`: a Next.js console for Bore account access, CLI approval, and namespace visibility.
 
 ## Install
@@ -48,7 +48,7 @@ bore uninstall
 - A reserved subdomain owns its full nested namespace, so `pia.example.com`, `api.pia.example.com`, and `*.pia.example.com` route to the same active client.
 - When the control plane runs with `BORE_TLS_MODE=acme`, public traffic is HTTPS-only and the agent relay uses `wss://`.
 - Users have a reservation limit stored alongside their account record. The default is `2`.
-- Users also have a per-account child-host limit stored in SQLite. The default is `5`.
+- Users also have a per-account child-host limit stored in PostgreSQL. The default is `5`.
 
 ## Quick Start
 
@@ -58,36 +58,40 @@ bore uninstall
 pnpm install
 ```
 
-2. Start the control plane in development:
+2. Start a local PostgreSQL container, then the control plane:
 
 ```bash
-BORE_SERVER_ORIGIN=http://localhost:8787
-BORE_PUBLIC_DOMAIN=example.com
-BORE_TOKEN_SECRET=change-me
+docker compose -f compose.postgres.dev.yml up -d
+export DATABASE_URL=postgresql://bore:development-only@localhost:55439/bore
+export BORE_SERVER_ORIGIN=http://localhost:8787
+export BORE_PUBLIC_DOMAIN=example.com
+export BORE_TOKEN_SECRET=change-me
 pnpm dev:server
 ```
 
 For production with automatic DNS + Let's Encrypt wildcard certificates:
 
 ```bash
-BORE_SERVER_ORIGIN=https://bore.example.com
-BORE_PUBLIC_DOMAIN=example.com
-BORE_TOKEN_SECRET=change-me
-BORE_TLS_MODE=acme
-BORE_ACME_EMAIL=ops@example.com
-BORE_DNS_COMMAND=/opt/bore/bin/dns-hook
-BORE_INGRESS_RECORD_TYPE=CNAME
-BORE_INGRESS_RECORD_VALUE=bore.example.com
-PORT=443
-BORE_HTTP_PORT=80
+export DATABASE_URL=postgresql://bore:your-password@your-private-postgres-host:5432/bore
+export BORE_SERVER_ORIGIN=https://bore.example.com
+export BORE_PUBLIC_DOMAIN=example.com
+export BORE_TOKEN_SECRET=change-me
+export BORE_TLS_MODE=acme
+export BORE_ACME_EMAIL=ops@example.com
+export BORE_DNS_COMMAND=/opt/bore/bin/dns-hook
+export BORE_INGRESS_RECORD_TYPE=CNAME
+export BORE_INGRESS_RECORD_VALUE=bore.example.com
+export PORT=443
+export BORE_HTTP_PORT=80
 pnpm dev:server
 ```
 
 3. Start the web console in another shell:
 
 ```bash
-BORE_CONTROL_PLANE_ORIGIN=http://localhost:8787
-BORE_PUBLIC_DOMAIN=example.com
+export DATABASE_URL=postgresql://bore:development-only@localhost:55439/bore
+export BORE_CONTROL_PLANE_ORIGIN=http://localhost:8787
+export BORE_PUBLIC_DOMAIN=example.com
 pnpm dev:web
 ```
 
@@ -137,5 +141,7 @@ See `LICENSE` and `COMMERCIAL-LICENSE.md` for the governing terms.
 - Plain HTTP requests still buffer request/response bodies in memory, while websocket upgrades stay open and stream frames between the public client and local app.
 - The agent stores its local state under `~/.bore/`.
 - `bore login --server <origin>` overrides the saved server origin for that login and persists the new value.
-- `apps/web` and `apps/control-plane` both default to the shared SQLite database at `.data/bore.sqlite` when `BORE_DB_PATH` is not set.
+- `apps/web` and `apps/control-plane` share PostgreSQL through `DATABASE_URL`. Production Compose injects private-network connection settings and file-based secrets.
+- SQLite is retained only for legacy import and explicit compatibility fixtures. A failed PostgreSQL connection never falls back to SQLite.
+- Production cutover, backups, and recovery are documented in [PostgreSQL operations](docs/postgres-operations.md).
 - The web console uses its own session cookie plus control-plane API calls for namespace actions and CLI approval.

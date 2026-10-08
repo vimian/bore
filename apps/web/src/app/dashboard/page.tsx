@@ -25,7 +25,7 @@ export default async function DashboardPage() {
     redirect("/login");
   }
 
-  const overview = getDashboardOverview(user.id, getPublicDomain());
+  const overview = await getDashboardOverview(user.id, getPublicDomain());
 
   return (
     <main className="relative min-h-screen overflow-hidden px-6 py-8 md:px-10">
@@ -43,7 +43,7 @@ export default async function DashboardPage() {
               </h1>
               <p className="max-w-2xl text-sm leading-7 text-zinc-400 md:text-base">
                 Reserved namespaces, live claim state, and per-user host limits
-                are all flowing from the shared SQLite store.
+                are all flowing from the shared PostgreSQL store.
               </p>
               <Link
                 href="/"

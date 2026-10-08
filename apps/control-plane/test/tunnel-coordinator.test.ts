@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { readSnapshot } from "../src/bore-db.js";
+import { readSnapshot } from "../src/sqlite-db.js";
 import { UserFacingError } from "../src/errors.js";
 import { SQLiteStore } from "../src/store.js";
 import { TunnelCoordinator } from "../src/tunnel-coordinator.js";
@@ -121,7 +121,7 @@ test("routes child hosts with a port override to the active namespace claimant",
 
   const direct = coordinator.findActiveTunnelByHostname(`${assigned}.example.com`);
   const childHost = coordinator.findActiveTunnelByHostname(`api.${assigned}.example.com`);
-  const namespace = coordinator.listUserNamespaces(user).find((item) => item.subdomain === assigned);
+  const namespace = (await coordinator.listUserNamespaces(user)).find((item) => item.subdomain === assigned);
   const snapshot = readSnapshot(filePath);
   const accessHostRecord = Object.values(snapshot.accessHosts).find(
     (item) => item.hostname === `api.${assigned}`,
@@ -147,7 +147,7 @@ test("clearing a child-host port override falls back to the namespace port", asy
   await coordinator.clearAccessHostnamePortOverride(user, assigned, "api");
 
   const childHost = coordinator.findActiveTunnelByHostname(`api.${assigned}.example.com`);
-  const namespace = coordinator.listUserNamespaces(user).find((item) => item.subdomain === assigned);
+  const namespace = (await coordinator.listUserNamespaces(user)).find((item) => item.subdomain === assigned);
 
   assert.equal(childHost?.localPort, 3000);
   assert.equal(namespace?.accessHosts.find((item) => item.label === "api")?.localPortOverride, undefined);
@@ -373,7 +373,7 @@ test("releasing a namespace clears active and stale claims across devices", asyn
     { localPort: 4000, preferredSubdomain: assigned },
   ]);
 
-  const namespaceBeforeRelease = coordinator.listUserNamespaces(user).find(
+  const namespaceBeforeRelease = (await coordinator.listUserNamespaces(user)).find(
     (item) => item.subdomain === assigned,
   );
 
@@ -492,7 +492,7 @@ test("tracks direct namespace and child-host traffic separately by unique IP", a
   await coordinator.recordHostnameRequest(`api.${assigned}.example.com`, "203.0.113.12");
   await coordinator.recordHostnameRequest(`admin.${assigned}.example.com`, "203.0.113.200");
 
-  const namespace = coordinator.listUserNamespaces(user).find(
+  const namespace = (await coordinator.listUserNamespaces(user)).find(
     (item) => item.subdomain === assigned,
   );
 
@@ -552,7 +552,7 @@ test("clears traffic only for the targeted namespace scope", async () => {
 
   await coordinator.clearTraffic(user, assigned, { kind: "direct" });
 
-  let namespace = coordinator.listUserNamespaces(user).find((item) => item.subdomain === assigned);
+  let namespace = (await coordinator.listUserNamespaces(user)).find((item) => item.subdomain === assigned);
   assert.ok(namespace);
   assert.equal(namespace.directRequestStats.requestCount, 0);
   assert.equal(
@@ -566,7 +566,7 @@ test("clears traffic only for the targeted namespace scope", async () => {
 
   await coordinator.clearTraffic(user, assigned, { kind: "child", label: "api" });
 
-  namespace = coordinator.listUserNamespaces(user).find((item) => item.subdomain === assigned);
+  namespace = (await coordinator.listUserNamespaces(user)).find((item) => item.subdomain === assigned);
   assert.ok(namespace);
   assert.equal(namespace.directRequestStats.requestCount, 0);
   assert.equal(

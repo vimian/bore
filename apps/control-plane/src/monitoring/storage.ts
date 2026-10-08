@@ -46,7 +46,7 @@ export function openMonitoringDb(path: string): DatabaseSync {
   return db;
 }
 
-export function saveRequests(db: DatabaseSync, rows: RequestAggregate[]): void {
+export function saveRequests(db: DatabaseSync, rows: RequestAggregate[], inTransaction = false): void {
   const find = db.prepare("SELECT histogram FROM requests WHERE minute=? AND host=? AND protocol=? AND outcome=? AND status=?");
   const write = db.prepare(`INSERT INTO requests VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT (minute, host, protocol, outcome, status) DO UPDATE SET
@@ -54,7 +54,7 @@ export function saveRequests(db: DatabaseSync, rows: RequestAggregate[]): void {
     max_ms=MAX(max_ms,excluded.max_ms), routing_ms=routing_ms+excluded.routing_ms,
     relay_ms=relay_ms+excluded.relay_ms, bytes=bytes+excluded.bytes,
     histogram=excluded.histogram, local_ms=local_ms+excluded.local_ms, local_count=local_count+excluded.local_count`);
-  db.exec("BEGIN IMMEDIATE");
+  if (!inTransaction) db.exec("BEGIN IMMEDIATE");
   try {
     for (const row of rows) {
       const key = [row.minute, row.host, row.protocol, row.outcome, row.status];
@@ -63,9 +63,9 @@ export function saveRequests(db: DatabaseSync, rows: RequestAggregate[]): void {
       row.histogram.forEach((count, index) => { histogram[index] = (histogram[index] ?? 0) + count; });
       write.run(...key, row.count, row.totalMs, row.maxMs, row.routingMs, row.relayMs, row.bytes, JSON.stringify(histogram), row.localMs, row.localCount);
     }
-    db.exec("COMMIT");
+    if (!inTransaction) db.exec("COMMIT");
   } catch (error) {
-    db.exec("ROLLBACK");
+    if (!inTransaction) db.exec("ROLLBACK");
     throw error;
   }
 }

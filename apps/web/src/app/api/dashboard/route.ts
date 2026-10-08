@@ -13,7 +13,7 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  return NextResponse.json(getDashboardOverview(user.id, getPublicDomain()), {
+  return NextResponse.json(await getDashboardOverview(user.id, getPublicDomain()), {
     headers: {
       "cache-control": "no-store",
     },

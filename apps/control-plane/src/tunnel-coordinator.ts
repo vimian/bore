@@ -11,7 +11,7 @@ import {
   type ControlPlaneStore,
   DEFAULT_RESERVATION_LIMIT,
   setDeviceConnection as persistDeviceConnection,
-} from "./store.js";
+} from "./store-contract.js";
 import { UserFacingError, badRequest, conflict } from "./errors.js";
 import type {
   AccessHostRecord,
@@ -204,8 +204,9 @@ export class TunnelCoordinator {
     return this.buildTunnelViews(this.store.routingSnapshot?.() ?? this.store.snapshot(), userId);
   }
 
-  listUserNamespaces(user: UserRecord): ReservationView[] {
-    return buildDashboardOverview(this.store.userSnapshot?.(user.id) ?? this.store.snapshot(), user, this.publicDomain).namespaces;
+  async listUserNamespaces(user: UserRecord): Promise<ReservationView[]> {
+    const state = await (this.store.userSnapshot?.(user.id) ?? this.store.snapshot());
+    return buildDashboardOverview(state, state.users[user.id] ?? user, this.publicDomain).namespaces;
   }
 
   async setDeviceConnection(deviceId: string, connected: boolean): Promise<void> {
@@ -371,7 +372,7 @@ export class TunnelCoordinator {
       }
 
       if (kind === "custom") {
-        const accessHostLimit = user.accessHostLimit ?? DEFAULT_ACCESS_HOST_LIMIT;
+        const accessHostLimit = (state.users[user.id] ?? user).accessHostLimit ?? DEFAULT_ACCESS_HOST_LIMIT;
         const accessHostCount = Object.values(state.accessHosts).filter(
           (accessHost) =>
             accessHost.userId === reservation.userId && (accessHost.kind ?? "custom") === "custom",
@@ -949,7 +950,7 @@ export class TunnelCoordinator {
     }
 
     const now = new Date().toISOString();
-    const reservationLimit = user.reservationLimit ?? DEFAULT_RESERVATION_LIMIT;
+    const reservationLimit = (state.users[user.id] ?? user).reservationLimit ?? DEFAULT_RESERVATION_LIMIT;
     const reservedCount = Object.values(state.reservations).filter(
       (reservation) => reservation.userId === user.id,
     ).length;

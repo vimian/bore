@@ -21,7 +21,7 @@ function parseArgs(argv: string[]) {
 
 try {
   const { email, limit } = parseArgs(process.argv.slice(2));
-  const user = setUserAccessHostLimitByEmail(email, limit);
+  const user = await setUserAccessHostLimitByEmail(email, limit);
 
   if (!user) {
     console.error(`No user found for ${email}.`);

@@ -1,7 +1,9 @@
 import type { ServerResponse } from "node:http";
 import { monitorEventLoopDelay } from "node:perf_hooks";
 import { join, dirname } from "node:path";
-import { openMonitoringDb, pruneMonitoring, saveRequests, saveSample, type RequestAggregate } from "./storage.js";
+import type { DatabaseSync } from "node:sqlite";
+import type { RequestAggregate } from "./storage.js";
+import { createMonitoringStorage, type DeviceAggregate, type MonitoringBatch, type MonitoringStorage, type Sample } from "./adapter.js";
 
 export const DURATION_BUCKETS = [50, 100, 250, 500, 1000, 3000, 10000, 30000, Infinity];
 
@@ -29,7 +31,7 @@ export class RequestTrace {
 }
 
 export class TunnelMonitoring {
-  readonly db;
+  readonly storage: MonitoringStorage;
   #rows = new Map<string, RequestAggregate>();
   #loop = monitorEventLoopDelay({ resolution: 20 });
   #cpu = process.cpuUsage();
@@ -38,37 +40,57 @@ export class TunnelMonitoring {
   #timer?: NodeJS.Timeout;
   #active = 0;
   #dropped = 0;
-  #devices = new Map<string, { minute: number; deviceId: string; event: string; code: number; count: number }>();
+  #devices = new Map<string, DeviceAggregate>();
+  #samples: Sample[] = [];
+  #pending?: MonitoringBatch;
+  #flushing?: Promise<void>;
+  #sampling = false;
+  #sampleTask?: Promise<void>;
+  #closing = false;
 
-  constructor(dbPath: string) {
-    this.db = openMonitoringDb(process.env.BORE_MONITORING_DB_PATH ?? join(dirname(dbPath), "monitoring.sqlite"));
+  constructor(dbPath: string, options: { databaseUrl?: string; storage?: MonitoringStorage } = { databaseUrl: process.env.DATABASE_URL }) {
+    this.storage = options.storage ?? createMonitoringStorage(
+      process.env.BORE_MONITORING_DB_PATH ?? join(dirname(dbPath), "monitoring.sqlite"), options.databaseUrl);
+  }
+
+  get db(): DatabaseSync {
+    if (!this.storage.db) throw new Error("Direct SQLite access requires fixture mode and an awaited flush");
+    return this.storage.db;
   }
 
   start(gauges: () => Record<string, number>): void {
     this.#loop.enable();
     this.#timer = setInterval(() => {
-      try {
-        this.flush();
-        const now = performance.now();
-        const cpu = process.cpuUsage();
-        const cpuPercent = ((cpu.user + cpu.system - this.#cpu.user - this.#cpu.system) / 1000) / (now - this.#lastSample) * 100;
-        const memory = process.memoryUsage();
-        const data = { ...memory, cpuPercent, eventLoopP99Ms: this.#loop.percentile(99) / 1e6,
-          eventLoopMaxMs: this.#loop.max / 1e6, activeRequests: this.#active, droppedMetrics: this.#dropped, ...gauges() };
-        saveSample(this.db, "control-plane", data);
-        if (data.eventLoopP99Ms > 500 || memory.heapUsed > 1024 ** 3) {
-          console.warn(JSON.stringify({ event: "bore_bottleneck", ...data }));
-        }
-        this.#cpu = cpu;
-        this.#lastSample = now;
-        this.#loop.reset();
-        if (Date.now() - this.#lastPrune > 3600_000) {
-          pruneMonitoring(this.db);
-          this.#lastPrune = Date.now();
-        }
-      } catch (error) { console.error("Monitoring persistence failed", error); }
+      if (!this.#sampling) this.#sampleTask = this.sample(gauges);
     }, 15_000);
     this.#timer.unref();
+  }
+
+  private async sample(gauges: () => Record<string, number>): Promise<void> {
+    if (this.#sampling || this.#closing) return;
+    this.#sampling = true;
+    try {
+      const now = performance.now();
+      const cpu = process.cpuUsage();
+      const cpuPercent = ((cpu.user + cpu.system - this.#cpu.user - this.#cpu.system) / 1000) / (now - this.#lastSample) * 100;
+      const memory = process.memoryUsage();
+      const data = { ...memory, cpuPercent, eventLoopP99Ms: this.#loop.percentile(99) / 1e6,
+        eventLoopMaxMs: this.#loop.max / 1e6, activeRequests: this.#active, droppedMetrics: this.#dropped, ...gauges() };
+      if (this.#samples.length < 240) this.#samples.push({ time: Date.now(), source: "control-plane", data });
+      else this.#dropped += 1;
+      if (data.eventLoopP99Ms > 500 || memory.heapUsed > 1024 ** 3) {
+        console.warn(JSON.stringify({ event: "bore_bottleneck", ...data }));
+      }
+      this.#cpu = cpu;
+      this.#lastSample = now;
+      this.#loop.reset();
+      await this.flush();
+      if (Date.now() - this.#lastPrune > 3600_000) {
+        await this.storage.prune();
+        this.#lastPrune = Date.now();
+      }
+    } catch (error) { console.error("Monitoring persistence failed; pending batch retained", error); }
+    finally { this.#sampling = false; }
   }
 
   trace(host: string, protocol: string): RequestTrace {
@@ -108,13 +130,19 @@ export class TunnelMonitoring {
     return trace;
   }
 
-  flush(): void {
-    saveRequests(this.db, [...this.#rows.values()]);
-    this.#rows.clear();
-    const write = this.db.prepare(`INSERT INTO device_events VALUES (?,?,?,?,?)
-      ON CONFLICT (minute,device_id,event,code) DO UPDATE SET count=count+excluded.count`);
-    for (const entry of this.#devices.values()) write.run(entry.minute, entry.deviceId, entry.event, entry.code, entry.count);
-    this.#devices.clear();
+  flush(): Promise<void> {
+    if (this.#flushing) return this.#flushing;
+    if (!this.#pending) {
+      this.#pending = { requests: [...this.#rows.values()], devices: [...this.#devices.values()], samples: this.#samples };
+      this.#rows = new Map();
+      this.#devices = new Map();
+      this.#samples = [];
+    }
+    const batch = this.#pending;
+    this.#flushing = Promise.resolve().then(() => this.storage.saveBatch(batch)).then(() => {
+      this.#pending = undefined;
+    }).finally(() => { this.#flushing = undefined; });
+    return this.#flushing;
   }
 
   deviceEvent(deviceId: string, event: string, code = 0): void {
@@ -126,10 +154,13 @@ export class TunnelMonitoring {
     else this.#dropped += 1;
   }
 
-  close(): void {
+  async close(): Promise<void> {
+    this.#closing = true;
     if (this.#timer) clearInterval(this.#timer);
     this.#loop.disable();
-    this.flush();
-    this.db.close();
+    await this.#sampleTask;
+    await this.flush();
+    if (this.#rows.size || this.#devices.size || this.#samples.length) await this.flush();
+    await this.storage.close();
   }
 }

@@ -56,17 +56,17 @@ test("traffic batching preserves counts with bounded memory and one write per fl
   assert.equal(batches[1]?.length, 4096);
 });
 
-test("metrics aggregate across flushes, count aborted requests once, and prune expired buckets", () => {
-  const monitoring = new TunnelMonitoring(tempDb());
+test("metrics aggregate across flushes, count aborted requests once, and prune expired buckets", async () => {
+  const monitoring = new TunnelMonitoring(tempDb(), { databaseUrl: undefined });
   for (let index = 0; index < 2; index++) {
     const trace = monitoring.trace("eva.example.com", "http");
     trace.routed(); trace.sent(); trace.received(); trace.bytes = 50;
     trace.finish(200); trace.finish(499);
-    monitoring.flush();
+    await monitoring.flush();
   }
   const abort = monitoring.trace("eva.example.com", "http");
   abort.outcome = "client_aborted"; abort.finish(499);
-  monitoring.flush();
+  await monitoring.flush();
   const row = monitoring.db.prepare("SELECT count, bytes, histogram FROM requests WHERE status=200").get() as { count: number; bytes: number; histogram: string };
   assert.equal(row.count, 2);
   assert.equal(row.bytes, 100);
@@ -75,13 +75,13 @@ test("metrics aggregate across flushes, count aborted requests once, and prune e
   monitoring.deviceEvent("device-one", "connected");
   monitoring.deviceEvent("device-one", "connected");
   monitoring.deviceEvent("device-one", "closed", 1006);
-  monitoring.flush();
+  await monitoring.flush();
   assert.equal(monitoring.db.prepare("SELECT count FROM device_events WHERE event='connected'").get()?.count, 2);
   assert.equal(monitoring.db.prepare("SELECT code FROM device_events WHERE event='closed'").get()?.code, 1006);
   pruneMonitoring(monitoring.db, Date.now() + 15 * 86400_000);
   assert.equal(monitoring.db.prepare("SELECT COUNT(*) AS count FROM requests").get()?.count, 0);
   assert.equal(monitoring.db.prepare("SELECT COUNT(*) AS count FROM device_events").get()?.count, 0);
-  monitoring.close();
+  await monitoring.close();
 });
 
 test("independent probes detect a hung service with a wall-clock deadline", async () => {

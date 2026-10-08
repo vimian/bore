@@ -34,14 +34,14 @@ export async function getCurrentUser(): Promise<UserRecord | null> {
     return null;
   }
 
-  return getUserBySessionToken(token);
+  return await getUserBySessionToken(token);
 }
 
 export async function signInWithEmail(
   email: string,
   password: string,
 ): Promise<{ user: UserRecord; sessionToken: string } | null> {
-  const user = authenticateUser(email, password);
+  const user = await authenticateUser(email, password);
 
   if (!user) {
     return null;
@@ -49,7 +49,7 @@ export async function signInWithEmail(
 
   return {
     user,
-    sessionToken: createSession(user.id),
+    sessionToken: await createSession(user.id),
   };
 }
 
@@ -58,15 +58,15 @@ export async function signUpWithEmail(input: {
   password: string;
   name?: string;
 }): Promise<{ user: UserRecord; sessionToken: string }> {
-  const user = createUserAccount(input);
+  const user = await createUserAccount(input);
   return {
     user,
-    sessionToken: createSession(user.id),
+    sessionToken: await createSession(user.id),
   };
 }
 
-export function clearSession(token: string | null): void {
+export async function clearSession(token: string | null): Promise<void> {
   if (token) {
-    deleteSession(token);
+    await deleteSession(token);
   }
 }

@@ -1,0 +1,36 @@
+name: Tests
+on:
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+    paths-ignore: ["apps/web/public/downloads/latest/**"]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18.6@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
+        env:
+          POSTGRES_USER: bore
+          POSTGRES_PASSWORD: test-password
+          POSTGRES_DB: bore_test
+        ports: ["5432:5432"]
+        options: --health-cmd "pg_isready -U bore -d bore_test" --health-interval 5s --health-timeout 3s --health-retries 30
+    env:
+      TEST_DATABASE_URL: postgresql://bore:test-password@127.0.0.1:5432/bore_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: apps/agent/go.mod
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build

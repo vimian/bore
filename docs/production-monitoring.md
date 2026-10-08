@@ -6,8 +6,18 @@ counters. Monitoring runs continuously after `docker compose --env-file
 
 ## Data and retention
 
-- `/data/monitoring.sqlite` is a separate SQLite database in the existing
-  persistent data volume. It survives container recreation and deployment.
+- Production monitoring uses the shared PostgreSQL database configured by
+  `DATABASE_URL`. Its `monitoring` schema contains `requests`, `samples`,
+  `probes`, and `device_events`; PostgreSQL's persistent Docker volume survives
+  application container recreation. Histograms, sample data, and probe details
+  are JSONB; bucket timestamps and counters are integers.
+- The production migration imports existing `/data/monitoring.sqlite` history
+  along with application data. Keep the verified SQLite backup until migration
+  checks and the recovery window are complete. SQLite remains an explicit
+  fixture adapter, not the default development database. Server startup requires
+  `DATABASE_URL`, or an explicit `BORE_DB_PATH` for SQLite fixtures. Production
+  processes must all have `DATABASE_URL` configured and must not silently fall
+  back.
 - HTTP requests and WebSocket upgrades are aggregated by minute, hostname,
   protocol, status, and outcome. Histograms contain latency buckets; reports
   give approximate p95 upper bounds, not exact percentiles.
@@ -83,15 +93,23 @@ Interpretation:
 Dashboard traffic counters are buffered and written once every five seconds
 instead of rewriting the full application state before every request. Pending
 traffic keys are capped at 4096; excess or failed-persistence counts are
-reported as `trafficDropped`. A crash can lose the most recent five seconds
-of dashboard counters and fifteen seconds of request aggregates.
+reported as `trafficDropped`.
 
-Routing uses a cached copy without traffic history, refreshed when application
-state or an external SQLite writer changes. Local state updates are serialized
-so concurrent requests cannot retain many stale snapshots or overwrite each
-other. This does not provide transactional concurrency across separate
-processes performing snapshot writes; account administration should still
-verify persistence after updates.
+Monitoring persistence is asynchronous and transactional. Only one batch can
+be in flight; concurrent flush calls await the same promise. A failed batch
+keeps its original minute buckets, histograms, counters, device events, and
+samples for retry, while new events enter a separate bounded buffer. Each of
+the two buffers holds at most 2048 request keys, 2048 device-event keys, and
+240 runtime samples. Existing unpersisted aggregates are never discarded on
+write failure. New keys or samples beyond the buffer budget increment
+`droppedMetrics`. Shutdown awaits pending writes and drains the newer buffer;
+the process owner then closes the shared PostgreSQL pool. A crash or forced
+termination can still lose any metrics not yet committed, particularly during
+a database outage; this is not a disk-backed queue.
+
+Routing uses a cached copy without traffic history. PostgreSQL state readers
+use the shared revisioned state; monitoring does not own or update routing
+metadata. Administrative writes should be verified after updates.
 
 Authentication reads the user row directly instead of loading all traffic
 history. Fresh database snapshots need no additional deep clone, and snapshot
@@ -104,8 +122,9 @@ Dashboard history is stored in indexed `traffic_history` rows in the application
 database, rather than inside the shared routing-state JSON. Existing inline
 counters migrate atomically on control-plane startup. Metadata updates preserve
 these rows; released hosts lose their history, and explicit counter resets affect
-only the selected hostname. Dashboard reads hydrate only the current user's
-history. Administrative full snapshots still include all counters.
+only the selected hostname. PostgreSQL snapshots contain metadata only;
+`userSnapshot` explicitly hydrates traffic statistics for the selected user's
+dashboard. Do not use the general snapshot API to inspect traffic counters.
 
 Pending HTTP relays and WebSocket handshakes are capped at 128. HTTP request
 bodies are capped at 16 MiB, and HTTP relays reject a transport queue over
@@ -126,10 +145,26 @@ receive these client fixes and supply local-application timing data.
 
 Redeploy the preceding committed master revision using the usual GitHub release
 flow. The monitoring database can remain in the persistent volume. Application
-identity and namespace ownership are unchanged. Back up the application database
-before production changes; do not restore a full database merely to roll back
-monitoring code. Versions predating the separate-history migration cannot read
-the new history table. Before deploying one of those versions, stop application
-writers and copy the history rows back into their corresponding fields in
-`app_state` inside a SQLite transaction. Keep the table and current account data;
-never replace current ownership or identities with an old backup.
+identity and namespace ownership are unchanged. Back up PostgreSQL before
+production changes; do not restore a full database merely to roll back monitoring
+code. A PostgreSQL-capable preceding revision can reuse the schema. Do not
+deploy a SQLite-only revision or unset `DATABASE_URL` after PostgreSQL cutover:
+the old SQLite files no longer reflect live account and namespace changes.
+Returning to SQLite requires stopping writers and explicitly exporting current
+PostgreSQL application and monitoring data, not restoring an old backup.
+
+## Adapter checks
+
+Run focused fixture and persistence tests through pnpm:
+
+```sh
+pnpm --filter @bore/control-plane exec node --test --import tsx test/monitoring-adapter.test.ts test/observability.test.ts
+TEST_DATABASE_URL=postgresql://bore:test-password@127.0.0.1:55439/bore_test pnpm --filter @bore/control-plane exec node --test --import tsx test/monitoring-postgres.test.ts
+```
+
+The PostgreSQL integration test skips unless `TEST_DATABASE_URL` is supplied.
+Use only an isolated test database: it creates the shared schema and exercises
+retention pruning. It validates concurrent histogram accumulation, transaction
+rollback, JSONB storage, integer timestamps/counters, report output, and probes.
+Explicit `{ databaseUrl: undefined }` selects the SQLite fixture adapter even
+when the surrounding process has a production `DATABASE_URL` configured.

@@ -9,6 +9,7 @@ WORKDIR /app
 FROM base AS deps
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
 COPY apps/control-plane/package.json apps/control-plane/tsconfig.json ./apps/control-plane/
+COPY packages/database ./packages/database
 RUN pnpm install --frozen-lockfile --filter @bore/control-plane...
 
 FROM deps AS build
@@ -23,6 +24,7 @@ ENV BORE_DB_PATH=/data/bore.sqlite
 COPY --from=build /app/package.json /app/pnpm-lock.yaml /app/pnpm-workspace.yaml /app/tsconfig.base.json ./
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/apps/control-plane ./apps/control-plane
+COPY --from=build /app/packages ./packages
 RUN useradd --create-home --uid 10001 bore \
   && mkdir -p /data \
   && chown -R bore:bore /data /app

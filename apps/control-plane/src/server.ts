@@ -19,7 +19,8 @@ import { getClientIp, getForwardedProto, sanitizeForwardHeaders } from "./forwar
 import { diffAddedHostnames, listDevicePublicHostnames } from "./prewarm-hosts.js";
 import { SessionTokenService } from "./session-tokens.js";
 import { DeviceSocketRegistry } from "./device-socket-registry.js";
-import { SQLiteStore, type ControlPlaneStore } from "./store.js";
+import type { ControlPlaneStore } from "./store-contract.js";
+import { PostgreSQLStore } from "./postgres-store.js";
 import { TraefikManager } from "./traefik-manager.js";
 import { TunnelCoordinator } from "./tunnel-coordinator.js";
 import type {
@@ -270,7 +271,12 @@ function redirectToHttps(
 
 export async function startServer(): Promise<void> {
   const config = loadConfig();
-  const store: ControlPlaneStore = new SQLiteStore(config.dbPath);
+  const usesPostgreSQL = Boolean(process.env.DATABASE_URL);
+  if (!usesPostgreSQL && !process.env.BORE_DB_PATH) {
+    throw new Error("DATABASE_URL is required; BORE_DB_PATH is supported only for explicit legacy fixtures");
+  }
+  const store: ControlPlaneStore = usesPostgreSQL ? new PostgreSQLStore()
+    : new (await import("./store.js")).SQLiteStore(config.dbPath);
   await store.init();
   await store.clearDeviceConnections();
 
@@ -303,7 +309,13 @@ export async function startServer(): Promise<void> {
     handleProtocols: (_protocols, request) => acceptedProtocols.get(request) || false,
   });
 
-  const resolveUser = (request: IncomingMessage): UserRecord | undefined => {
+  const legacyAuth = usesPostgreSQL ? undefined : await import("./sqlite-db.js");
+  const findUser = async (id: string): Promise<UserRecord | undefined> =>
+    (await (legacyAuth ? legacyAuth.getUserById(id, config.dbPath) : getUserById(id))) ?? undefined;
+  const findSessionUser = async (token: string): Promise<UserRecord | undefined> =>
+    (await (legacyAuth ? legacyAuth.getUserBySessionToken(token, config.dbPath) : getUserBySessionToken(token))) ?? undefined;
+
+  const resolveUser = async (request: IncomingMessage): Promise<UserRecord | undefined> => {
     const token = parseBearerToken(request);
 
     if (!token) {
@@ -313,14 +325,14 @@ export async function startServer(): Promise<void> {
     const payload = tokens.verify(token);
 
     if (!payload) {
-      return getUserBySessionToken(token, config.dbPath) ?? undefined;
+      return findSessionUser(token);
     }
 
-    return getUserById(payload.sub, config.dbPath) ?? undefined;
+    return findUser(payload.sub);
   };
 
   const resolveBrowserUser = async (token: string): Promise<UserRecord | undefined> => {
-    return getUserBySessionToken(token, config.dbPath) ?? undefined;
+    return findSessionUser(token);
   };
 
   await Promise.all(
@@ -342,7 +354,8 @@ export async function startServer(): Promise<void> {
     if (shouldHandleControlPlaneHttpRoute(request.headers.host, url.pathname, config.publicDomain)) {
       if (method === "GET" && url.pathname === "/health") {
         trace.routed();
-        respondJson(response, 200, { ok: true });
+        const ready = store.ready?.() ?? true;
+        respondJson(response, ready ? 200 : 503, { ok: ready });
         return;
       }
 
@@ -428,7 +441,7 @@ export async function startServer(): Promise<void> {
       }
 
       if (url.pathname.startsWith("/api/")) {
-        const user = resolveUser(request);
+        const user = await resolveUser(request);
 
         if (!user) {
           respondJson(response, 401, { error: "Unauthorized" });
@@ -485,7 +498,7 @@ export async function startServer(): Promise<void> {
             listDevicePublicHostnames(currentSnapshot, body.deviceId, config.publicDomain),
           );
           await prewarmHostnames(syncHostnames);
-          const namespaces = coordinator.listUserNamespaces(user);
+          const namespaces = await coordinator.listUserNamespaces(user);
           respondJson(response, 200, { ...syncResponse, namespaces });
           return;
         }
@@ -499,7 +512,7 @@ export async function startServer(): Promise<void> {
 
         if (method === "GET" && url.pathname === "/api/v1/namespaces") {
           respondJson(response, 200, {
-            namespaces: coordinator.listUserNamespaces(user),
+            namespaces: await coordinator.listUserNamespaces(user),
           });
           return;
         }
@@ -531,7 +544,7 @@ export async function startServer(): Promise<void> {
               ? { kind: "direct" }
               : { kind: "child", label: body.label ?? "" },
           );
-          const namespace = coordinator.listUserNamespaces(user).find(
+          const namespace = (await coordinator.listUserNamespaces(user)).find(
             (item) => item.subdomain === namespaceTrafficPath.subdomain,
           );
           respondJson(response, 200, {
@@ -549,7 +562,7 @@ export async function startServer(): Promise<void> {
           );
           await traefikManager?.reconcile(store.routingSnapshot?.() ?? store.snapshot());
           await prewarmHostnames([`${accessHost.hostname}.${config.publicDomain}`]);
-          const namespace = coordinator.listUserNamespaces(user).find(
+          const namespace = (await coordinator.listUserNamespaces(user)).find(
             (item) => item.subdomain === accessHostPath.subdomain,
           );
           respondJson(response, 200, {
@@ -567,7 +580,7 @@ export async function startServer(): Promise<void> {
             body.label,
           );
           await traefikManager?.reconcile(store.routingSnapshot?.() ?? store.snapshot());
-          const namespace = coordinator.listUserNamespaces(user).find(
+          const namespace = (await coordinator.listUserNamespaces(user)).find(
             (item) => item.subdomain === accessHostPath.subdomain,
           );
           respondJson(response, 200, {
@@ -585,7 +598,7 @@ export async function startServer(): Promise<void> {
             body.label,
             body.localPort,
           );
-          const namespace = coordinator.listUserNamespaces(user).find(
+          const namespace = (await coordinator.listUserNamespaces(user)).find(
             (item) => item.subdomain === accessHostPortPath.subdomain,
           );
           respondJson(response, 200, {
@@ -602,7 +615,7 @@ export async function startServer(): Promise<void> {
             accessHostPortPath.subdomain,
             body.label,
           );
-          const namespace = coordinator.listUserNamespaces(user).find(
+          const namespace = (await coordinator.listUserNamespaces(user)).find(
             (item) => item.subdomain === accessHostPortPath.subdomain,
           );
           respondJson(response, 200, {
@@ -740,7 +753,16 @@ export async function startServer(): Promise<void> {
   const server = tlsManager
     ? createHttpsServer(tlsManager.getHttpsOptions(), requestHandler)
     : createServer(requestHandler);
-  server.once("close", () => { clearInterval(trafficTimer); monitoring.close(); });
+  let cleanup: Promise<void> | undefined;
+  const closeResources = (): Promise<void> => cleanup ??= (async () => {
+    clearInterval(trafficTimer);
+    await traffic.flush();
+    await store.close?.();
+    await monitoring.close();
+  })();
+  server.once("close", () => {
+    void closeResources().catch((error) => console.error("Unable to close control-plane storage", error));
+  });
 
   wss.on("connection", (socket, request) => {
     const url = new URL(request.url ?? "/", config.serverOrigin);
@@ -1072,15 +1094,32 @@ export async function startServer(): Promise<void> {
     server.listen(config.port, config.host, resolve);
   });
 
+  let redirectServer: ReturnType<typeof createServer> | undefined;
   if (config.httpRedirectPort !== undefined) {
-    const redirectServer = createServer((request, response) => {
+    redirectServer = createServer((request, response) => {
       redirectToHttps(request, response, config.port);
     });
 
     await new Promise<void>((resolve) => {
-      redirectServer.listen(config.httpRedirectPort, config.host, resolve);
+      redirectServer!.listen(config.httpRedirectPort, config.host, resolve);
     });
   }
+
+  const shutdown = () => {
+    const deadline = setTimeout(() => process.exit(1), 10_000);
+    deadline.unref();
+    server.close();
+    server.closeAllConnections();
+    redirectServer?.close();
+    for (const socket of wss.clients) socket.terminate();
+    for (const socket of publicWss.clients) socket.terminate();
+    void closeResources().then(() => { clearTimeout(deadline); process.exit(0); }).catch((error) => {
+      console.error("Control-plane shutdown failed", error);
+      process.exit(1);
+    });
+  };
+  process.once("SIGTERM", shutdown);
+  process.once("SIGINT", shutdown);
 
   console.log(
     `bore control plane listening on ${config.host}:${config.port} (${config.serverOrigin})`,
